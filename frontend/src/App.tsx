@@ -9,6 +9,7 @@ import { ReviewQueue } from './components/ReviewQueue';
 import { RoiImpactPanel } from './components/RoiImpactPanel';
 import { SystemHealthHUD } from './components/SystemHealthHUD';
 import { SimulationControls } from './components/SimulationControls';
+import { PrivacySplitScreenModal } from './components/PrivacySplitScreenModal';
 import { LiveFeedSocket } from './services/websocket';
 import { api } from './services/api';
 import { Zone, LiveStatePayload, LiveAlert, ZoneStatus } from './types';
@@ -19,6 +20,7 @@ export const App: React.FC = () => {
   const [liveState, setLiveState] = useState<LiveStatePayload | null>(null);
   const [isCalibrating, setIsCalibrating] = useState(false);
   const [isSimOpen, setIsSimOpen] = useState(false);
+  const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   const [pendingReviewsCount, setPendingReviewsCount] = useState(0);
 
   // Fetch initial zones & pending review count
@@ -79,6 +81,7 @@ export const App: React.FC = () => {
           inferenceFps={inferenceFps}
           isOnline={true}
           onOpenSimControls={() => setIsSimOpen(true)}
+          onOpenPrivacyModal={() => setIsPrivacyOpen(true)}
         />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -86,10 +89,15 @@ export const App: React.FC = () => {
             <LiveActionFeed
               alerts={activeAlerts}
               zoneStatuses={zoneStatuses}
+              queueStates={liveState?.queue_states}
+              queuePredictions={liveState?.queue_predictions}
+              hardwareStatus={liveState?.hardware_status}
               isOccluded={liveState?.is_occluded || false}
               isLowLight={liveState?.is_low_light || false}
               footfallToday={liveState?.footfall_today || 18}
               onRestock={handleRestock}
+              onRefreshData={fetchInitialData}
+              onOpenPrivacyModal={() => setIsPrivacyOpen(true)}
             />
           )}
 
@@ -130,6 +138,11 @@ export const App: React.FC = () => {
       <SimulationControls
         isOpen={isSimOpen}
         onClose={() => setIsSimOpen(false)}
+      />
+
+      <PrivacySplitScreenModal
+        isOpen={isPrivacyOpen}
+        onClose={() => setIsPrivacyOpen(false)}
       />
     </div>
   );

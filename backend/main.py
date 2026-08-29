@@ -22,6 +22,8 @@ from backend.app.api.routes_review import router as review_router
 from backend.app.api.routes_sync import router as sync_router
 from backend.app.api.routes_video import router as video_router, set_pipeline_instance
 from backend.app.api.routes_health import router as health_router
+from backend.app.api.routes_queue import router as queue_router, set_pipeline_instance_queue
+from backend.app.api.routes_alerts import router as alerts_router, set_alert_manager_instance
 from demo_seed import seed_database
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -38,6 +40,8 @@ async def lifespan(app: FastAPI):
     seed_database()
     
     set_pipeline_instance(pipeline)
+    set_pipeline_instance_queue(pipeline)
+    set_alert_manager_instance(pipeline.alert_manager)
     
     # Setup async loop broadcaster from thread
     loop = asyncio.get_running_loop()
@@ -79,6 +83,9 @@ app.include_router(review_router)
 app.include_router(sync_router)
 app.include_router(video_router)
 app.include_router(health_router)
+app.include_router(queue_router)
+app.include_router(alerts_router)
+
 
 @app.get("/")
 def root():

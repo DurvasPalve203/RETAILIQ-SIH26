@@ -19,6 +19,10 @@ export default defineConfig({
       '/video/feed': {
         target: 'http://localhost:8000',
         changeOrigin: true
+      },
+      '/video/privacy-feed': {
+        target: 'http://localhost:8000',
+        changeOrigin: true
       }
     }
   }

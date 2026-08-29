@@ -144,6 +144,111 @@ def init_db():
     );
     """)
 
+    # 9. Queue Zones Table (FR-Q02)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS queue_zones (
+        zone_id TEXT PRIMARY KEY,
+        camera_id TEXT NOT NULL,
+        polygon_json TEXT NOT NULL,
+        axis_start_xy TEXT NOT NULL, -- JSON {x, y}
+        axis_end_xy TEXT NOT NULL,   -- JSON {x, y}
+        created_at REAL NOT NULL,
+        FOREIGN KEY (zone_id) REFERENCES zones(zone_id)
+    );
+    """)
+
+    # 10. Queue Tracks Table (FR-Q03, FR-Q04)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS queue_tracks (
+        record_id TEXT PRIMARY KEY,
+        track_id INTEGER NOT NULL,
+        zone_id TEXT NOT NULL,
+        ts REAL NOT NULL,
+        projection_distance REAL NOT NULL,
+        classification TEXT NOT NULL, -- 'in_queue' | 'browsing'
+        pose_features_json TEXT,
+        FOREIGN KEY (zone_id) REFERENCES zones(zone_id)
+    );
+    """)
+
+    # 11. Queue State Table (FR-Q05)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS queue_state (
+        state_id TEXT PRIMARY KEY,
+        zone_id TEXT NOT NULL,
+        ts REAL NOT NULL,
+        queue_length INTEGER NOT NULL,
+        growth_rate REAL NOT NULL,
+        FOREIGN KEY (zone_id) REFERENCES zones(zone_id)
+    );
+    """)
+
+    # 12. Service Completions Table (FR-Q06)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS service_completions (
+        completion_id TEXT PRIMARY KEY,
+        zone_id TEXT NOT NULL,
+        track_id INTEGER,
+        ts REAL NOT NULL,
+        service_duration_seconds REAL NOT NULL,
+        FOREIGN KEY (zone_id) REFERENCES zones(zone_id)
+    );
+    """)
+
+    # 13. Queue Predictions Table (FR-Q06)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS queue_predictions (
+        prediction_id TEXT PRIMARY KEY,
+        zone_id TEXT NOT NULL,
+        ts REAL NOT NULL,
+        estimated_wait_seconds REAL NOT NULL,
+        method TEXT NOT NULL, -- 'rule' | 'lstm'
+        confidence REAL NOT NULL,
+        FOREIGN KEY (zone_id) REFERENCES zones(zone_id)
+    );
+    """)
+
+    # 14. Multi-Level Alerts Table (Section D)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS alerts (
+        alert_id TEXT PRIMARY KEY,
+        source_module TEXT NOT NULL, -- 'shelf' | 'queue' | 'system'
+        zone_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        message TEXT NOT NULL,
+        severity TEXT NOT NULL, -- 'CRITICAL' | 'HIGH' | 'LOW'
+        state TEXT NOT NULL,    -- 'NEW' | 'ACKNOWLEDGED' | 'ESCALATED' | 'RESOLVED'
+        created_at REAL NOT NULL,
+        acknowledged_at REAL,
+        resolved_at REAL,
+        escalate_count INTEGER DEFAULT 0,
+        details_json TEXT
+    );
+    """)
+
+    # 15. Alert Deliveries Table (Section D.3)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS alert_deliveries (
+        delivery_id TEXT PRIMARY KEY,
+        alert_id TEXT NOT NULL,
+        channel TEXT NOT NULL, -- 'dashboard' | 'mqtt' | 'buzzer' | 'led' | 'sms'
+        status TEXT NOT NULL,  -- 'sent' | 'failed' | 'suppressed'
+        sent_at REAL NOT NULL,
+        payload_json TEXT,
+        FOREIGN KEY (alert_id) REFERENCES alerts(alert_id)
+    );
+    """)
+
+    # Extend zones table if column axis_start_xy missing
+    try:
+        cursor.execute("ALTER TABLE zones ADD COLUMN axis_start_xy TEXT;")
+    except sqlite3.OperationalError:
+        pass
+    try:
+        cursor.execute("ALTER TABLE zones ADD COLUMN axis_end_xy TEXT;")
+    except sqlite3.OperationalError:
+        pass
+
     conn.commit()
 
 # Run initialization upon module import

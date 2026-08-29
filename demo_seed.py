@@ -74,6 +74,22 @@ def seed_database():
             "expected_capacity": 20
         },
         {
+            "zone_id": "zone-queue-01",
+            "camera_id": "cam-01",
+            "polygon": [
+                {"x": 0.22, "y": 0.70},
+                {"x": 0.74, "y": 0.70},
+                {"x": 0.74, "y": 0.96},
+                {"x": 0.22, "y": 0.96}
+            ],
+            "zone_type": "queue_zone",
+            "label": "POS Express Billing Counter Queue",
+            "target_sku_id": None,
+            "expected_capacity": 6,
+            "axis_start_xy": {"x": 0.28, "y": 0.86}, # Back of queue
+            "axis_end_xy": {"x": 0.70, "y": 0.86}    # Front billing counter
+        },
+        {
             "zone_id": "zone-staff-01",
             "camera_id": "cam-01",
             "polygon": [
@@ -85,21 +101,37 @@ def seed_database():
             "zone_type": "staff",
             "label": "Staff Counter & Inventory Door",
             "target_sku_id": None,
-            "expected_capacity": 2
+            "expected_capacity": 2,
+            "axis_start_xy": None,
+            "axis_end_xy": None
         }
     ]
 
     for z in zones:
+        axis_start_json = json.dumps(z.get("axis_start_xy")) if z.get("axis_start_xy") else None
+        axis_end_json = json.dumps(z.get("axis_end_xy")) if z.get("axis_end_xy") else None
         cursor.execute("""
-            INSERT INTO zones (zone_id, camera_id, polygon_json, zone_type, label, target_sku_id, expected_capacity, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO zones (zone_id, camera_id, polygon_json, zone_type, label, target_sku_id, expected_capacity, axis_start_xy, axis_end_xy, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(zone_id) DO UPDATE SET
                 polygon_json=excluded.polygon_json,
                 zone_type=excluded.zone_type,
                 label=excluded.label,
                 target_sku_id=excluded.target_sku_id,
-                expected_capacity=excluded.expected_capacity;
-        """, (z["zone_id"], z["camera_id"], json.dumps(z["polygon"]), z["zone_type"], z["label"], z["target_sku_id"], z["expected_capacity"], now))
+                expected_capacity=excluded.expected_capacity,
+                axis_start_xy=excluded.axis_start_xy,
+                axis_end_xy=excluded.axis_end_xy;
+        """, (z["zone_id"], z["camera_id"], json.dumps(z["polygon"]), z["zone_type"], z["label"], z["target_sku_id"], z["expected_capacity"], axis_start_json, axis_end_json, now))
+
+        if z["zone_type"] == "queue_zone":
+            cursor.execute("""
+                INSERT INTO queue_zones (zone_id, camera_id, polygon_json, axis_start_xy, axis_end_xy, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(zone_id) DO UPDATE SET
+                    polygon_json=excluded.polygon_json,
+                    axis_start_xy=excluded.axis_start_xy,
+                    axis_end_xy=excluded.axis_end_xy;
+            """, (z["zone_id"], z["camera_id"], json.dumps(z["polygon"]), axis_start_json, axis_end_json, now))
 
     # 2. Seed SKU Gallery with few-shot embeddings
     matcher = SkuMatcher()
@@ -152,6 +184,21 @@ def seed_database():
             VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(record_id) DO NOTHING;
         """, (f"dwl-seed-{i}", 100 + i, "zone-shelf-01" if i % 2 == 0 else "zone-shelf-02", now - (i * 300), now - (i * 300) + 14, 14.0 + (i % 8)))
+
+    # 5. Seed historical checkout service completions for wait time rolling average
+    sample_services = [
+        ("svc-seed-01", "zone-queue-01", 195, now - 1800, 42.0),
+        ("svc-seed-02", "zone-queue-01", 196, now - 1450, 48.0),
+        ("svc-seed-03", "zone-queue-01", 197, now - 1100, 36.0),
+        ("svc-seed-04", "zone-queue-01", 198, now - 720, 45.0),
+        ("svc-seed-05", "zone-queue-01", 199, now - 350, 39.0),
+    ]
+    for s in sample_services:
+        cursor.execute("""
+            INSERT INTO service_completions (completion_id, zone_id, track_id, ts, service_duration_seconds)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(completion_id) DO NOTHING;
+        """, s)
 
     conn.commit()
     print("Database seeding completed successfully!")

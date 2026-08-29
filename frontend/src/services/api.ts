@@ -1,4 +1,15 @@
-import { Zone, SkuItem, DashboardSummaryData, MerchandisingInsightItem, ReviewQueueItem, SystemHealthData } from '../types';
+import { 
+  Zone, 
+  SkuItem, 
+  DashboardSummaryData, 
+  MerchandisingInsightItem, 
+  ReviewQueueItem, 
+  SystemHealthData,
+  LiveAlert,
+  HardwareStatus,
+  PrivacyStats,
+  QueuePrediction
+} from '../types';
 
 const API_BASE = '/api';
 
@@ -28,6 +39,56 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
+    return res.json();
+  },
+
+  // Multi-Level Alert Manager
+  getAlerts: async (): Promise<LiveAlert[]> => {
+    const res = await fetch(`${API_BASE}/alerts`);
+    return res.json();
+  },
+  acknowledgeAlert: async (alertId: string, acknowledgedBy: string = 'staff_tablet'): Promise<any> => {
+    const res = await fetch(`${API_BASE}/alerts/${alertId}/acknowledge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ acknowledged_by: acknowledgedBy })
+    });
+    return res.json();
+  },
+  resolveAlert: async (alertId: string, reason: string = 'restock_cleared'): Promise<any> => {
+    const res = await fetch(`${API_BASE}/alerts/${alertId}/resolve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resolved_by: 'staff_tablet', reason })
+    });
+    return res.json();
+  },
+  getHardwareStatus: async (): Promise<HardwareStatus> => {
+    const res = await fetch(`${API_BASE}/alerts/hardware/status`);
+    return res.json();
+  },
+  testAlertChannel: async (channel: string, pattern_or_color: string = 'HIGH', test_message?: string): Promise<any> => {
+    const res = await fetch(`${API_BASE}/alerts/test-channel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel, pattern_or_color, test_message })
+    });
+    return res.json();
+  },
+
+  // Queue Intelligence & Wait-Time Predictions
+  getQueueState: async (): Promise<any> => {
+    const res = await fetch(`${API_BASE}/queue/state`);
+    return res.json();
+  },
+  getQueuePredictions: async (): Promise<QueuePrediction[]> => {
+    const res = await fetch(`${API_BASE}/queue/predictions`);
+    return res.json();
+  },
+
+  // Privacy Pipeline
+  getPrivacyStats: async (): Promise<PrivacyStats> => {
+    const res = await fetch(`${API_BASE}/video/privacy-stats`);
     return res.json();
   },
 
@@ -67,7 +128,7 @@ export const api = {
   },
 
   // Simulation Controls
-  controlSimulation: async (action: string, params: { zone_id?: string; count?: number; enabled?: boolean }): Promise<any> => {
+  controlSimulation: async (action: string, params: { zone_id?: string; count?: number; enabled?: boolean } = {}): Promise<any> => {
     const res = await fetch(`${API_BASE}/video/control`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

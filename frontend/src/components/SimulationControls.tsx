@@ -7,8 +7,11 @@ import {
   EyeOff, 
   Moon, 
   CheckCircle2, 
-  Sparkles,
-  Zap
+  Sparkles, 
+  Zap,
+  Users,
+  Smartphone,
+  Volume2
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -46,13 +49,33 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({ isOpen, 
     handleAction('low_light', { enabled: next }, next ? 'Low-Light Mode ON' : 'Normal Lighting Restored');
   };
 
+  const handleTestSms = async () => {
+    try {
+      await api.testAlertChannel('sms', 'CRITICAL', 'Emergency stockout and queue breach trigger');
+      setStatusMsg('Dispatched SIM800L GSM AT SMS Sequence');
+      setTimeout(() => setStatusMsg(null), 3000);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleTestBuzzer = async () => {
+    try {
+      await api.testAlertChannel('buzzer', 'CRITICAL');
+      setStatusMsg('Triggered Continuous Piezo Buzzer Alert');
+      setTimeout(() => setStatusMsg(null), 3000);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl p-6 space-y-6">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-xl overflow-hidden shadow-2xl p-6 space-y-5">
         <div className="flex items-center justify-between border-b border-slate-800 pb-4">
           <div className="flex items-center space-x-2">
             <Sliders className="w-5 h-5 text-cyan-400" />
-            <h3 className="text-base font-bold text-white">Interactive Edge Simulation Controls</h3>
+            <h3 className="text-base font-bold text-white">Edge Simulation & Hardware Diagnostics</h3>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800">
             <X className="w-5 h-5" />
@@ -60,60 +83,96 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({ isOpen, 
         </div>
 
         {statusMsg && (
-          <div className="p-3 rounded-xl bg-cyan-950/60 border border-cyan-500/40 text-cyan-200 text-xs flex items-center space-x-2">
+          <div className="p-3 rounded-xl bg-cyan-950/60 border border-cyan-500/40 text-cyan-200 text-xs flex items-center space-x-2 animate-bounce">
             <Zap className="w-4 h-4 text-cyan-400 flex-shrink-0" />
             <span>{statusMsg}</span>
           </div>
         )}
 
-        <div className="space-y-4">
+        <div className="space-y-4 max-h-[65vh] overflow-y-auto pr-1">
+          {/* Queue Intelligence Simulation */}
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
+              <Users className="w-3.5 h-3.5" /> <span>Queue Formation & Checkout Sim</span>
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                onClick={() => handleAction('add_queue', {}, 'Added Shopper to Queue Line')}
+                className="p-3 rounded-xl bg-cyan-950/30 hover:bg-cyan-950/60 border border-cyan-500/30 text-cyan-200 text-xs font-bold text-left space-y-1 transition-all"
+              >
+                <div>+ Add Shopper</div>
+                <p className="text-[10px] text-cyan-400/80 font-normal">Joins back of line</p>
+              </button>
+
+              <button
+                onClick={() => handleAction('serve_queue', {}, 'Customer Checked Out (Service Complete)')}
+                className="p-3 rounded-xl bg-emerald-950/30 hover:bg-emerald-950/60 border border-emerald-500/30 text-emerald-200 text-xs font-bold text-left space-y-1 transition-all"
+              >
+                <div>Serve Customer</div>
+                <p className="text-[10px] text-emerald-400/80 font-normal">Front customer exits</p>
+              </button>
+
+              <button
+                onClick={() => handleAction('queue_surge', {}, 'Queue Surge Triggered (+3 Shoppers)')}
+                className="p-3 rounded-xl bg-amber-950/30 hover:bg-amber-950/60 border border-amber-500/30 text-amber-200 text-xs font-bold text-left space-y-1 transition-all"
+              >
+                <div>Queue Surge</div>
+                <p className="text-[10px] text-amber-400/80 font-normal">Buildup &gt; 5 min wait</p>
+              </button>
+            </div>
+          </div>
+
           {/* Stock-Out Simulation */}
           <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Trigger Shelf Stock-Out</label>
+            <label className="text-xs font-bold text-rose-300 uppercase tracking-wider flex items-center gap-1.5">
+              <Flame className="w-3.5 h-3.5" /> <span>Shelf Stock-Out & Depletion</span>
+            </label>
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => handleAction('deplete', { zone_id: 'zone-shelf-01', count: 0 }, 'Emptied Zone 1: Organic Whole Milk')}
                 className="p-3 rounded-xl bg-rose-950/30 hover:bg-rose-950/50 border border-rose-500/30 text-rose-300 text-xs font-bold text-left space-y-1 transition-all"
               >
-                <div className="flex items-center space-x-1.5"><Flame className="w-3.5 h-3.5 text-rose-400" /> <span>Empty Milk (Zone 1)</span></div>
-                <p className="text-[10px] text-rose-400/80 font-normal">Triggers High Priority Alert</p>
+                <div>Empty Milk (Zone 1)</div>
+                <p className="text-[10px] text-rose-400/80 font-normal">Triggers CRITICAL stock-out</p>
               </button>
 
-              <button
-                onClick={() => handleAction('deplete', { zone_id: 'zone-shelf-03', count: 1 }, 'Depleted Zone 3: Cold Brew to 1 unit')}
-                className="p-3 rounded-xl bg-amber-950/30 hover:bg-amber-950/50 border border-amber-500/30 text-amber-300 text-xs font-bold text-left space-y-1 transition-all"
-              >
-                <div className="flex items-center space-x-1.5"><Flame className="w-3.5 h-3.5 text-amber-400" /> <span>Deplete Cold Brew</span></div>
-                <p className="text-[10px] text-amber-400/80 font-normal">Triggers ETA Prediction</p>
-              </button>
-            </div>
-          </div>
-
-          {/* Restock Simulation */}
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Simulate Restock Recovery</label>
-            <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => handleAction('restock', { zone_id: 'zone-shelf-01' }, 'Restocked Zone 1: Organic Milk')}
                 className="p-3 rounded-xl bg-emerald-950/30 hover:bg-emerald-950/50 border border-emerald-500/30 text-emerald-300 text-xs font-bold text-left space-y-1 transition-all"
               >
-                <div className="flex items-center space-x-1.5"><RefreshCw className="w-3.5 h-3.5 text-emerald-400" /> <span>Restock Milk (Z1)</span></div>
-                <p className="text-[10px] text-emerald-400/80 font-normal">Closes alert automatically</p>
+                <div>Restock Milk (Z1)</div>
+                <p className="text-[10px] text-emerald-400/80 font-normal">Auto-resolves alert</p>
+              </button>
+            </div>
+          </div>
+
+          {/* Hardware & Peripherals Test */}
+          <div className="space-y-2 pt-2 border-t border-slate-800">
+            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+              <Volume2 className="w-3.5 h-3.5 text-blue-400" /> <span>Hardware Trigger Diagnostics</span>
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={handleTestBuzzer}
+                className="p-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-left space-y-1 text-slate-200"
+              >
+                <div>Test Continuous Alarm</div>
+                <p className="text-[10px] text-slate-400 font-normal">Buzzer GPIO pin 18</p>
               </button>
 
               <button
-                onClick={() => handleAction('restock', { zone_id: 'zone-shelf-03' }, 'Restocked Zone 3: Cold Brew')}
-                className="p-3 rounded-xl bg-emerald-950/30 hover:bg-emerald-950/50 border border-emerald-500/30 text-emerald-300 text-xs font-bold text-left space-y-1 transition-all"
+                onClick={handleTestSms}
+                className="p-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-left space-y-1 text-slate-200"
               >
-                <div className="flex items-center space-x-1.5"><RefreshCw className="w-3.5 h-3.5 text-emerald-400" /> <span>Restock Cold Brew (Z3)</span></div>
-                <p className="text-[10px] text-emerald-400/80 font-normal">Closes alert automatically</p>
+                <div>Test SIM800L SMS</div>
+                <p className="text-[10px] text-slate-400 font-normal">UART AT Command sequence</p>
               </button>
             </div>
           </div>
 
           {/* Environmental Edge Cases */}
           <div className="space-y-2 pt-2 border-t border-slate-800">
-            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Edge Case Toggles</label>
+            <label className="text-xs font-bold text-slate-300 uppercase tracking-wider">Environmental Edge Cases</label>
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={handleToggleOcclusion}
@@ -141,7 +200,7 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({ isOpen, 
         <div className="pt-2 text-right">
           <button
             onClick={onClose}
-            className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+            className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
           >
             Close Controls
           </button>

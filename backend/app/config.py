@@ -71,6 +71,45 @@ class SyncLayerConfig(BaseModel):
 class DatabaseConfig(BaseModel):
     db_path: str = "backend/data/retailiq.db"
 
+class QueueConfig(BaseModel):
+    rolling_window_frames: int = 10
+    hysteresis_frames: int = 4
+    counter_end_threshold: float = 0.88
+    default_service_time_sec: float = 45.0
+    service_history_sample_size: int = 20
+    critical_wait_threshold_sec: float = 600.0
+    medium_wait_threshold_sec: float = 300.0
+    weight_orientation: float = 0.35
+    weight_velocity: float = 0.25
+    weight_spacing: float = 0.20
+    weight_dwell: float = 0.20
+
+class PrivacyConfig(BaseModel):
+    enabled: bool = True
+    face_detector_type: str = "opencv_fast"
+    face_confidence_threshold: float = 0.35
+    downsample_scale: float = 0.5
+    blur_kernel_size: int = 31
+    blur_sigma: float = 12.0
+
+class AlertChannelsConfig(BaseModel):
+    dashboard_enabled: bool = True
+    mqtt_enabled: bool = True
+    mqtt_topic_prefix: str = "retailiq/alerts"
+    buzzer_enabled: bool = True
+    buzzer_gpio_pin: int = 18
+    rgb_led_enabled: bool = True
+    rgb_led_pins: list[int] = [23, 24, 25]
+    sms_enabled: bool = True
+    sms_uart_port: str = "COM3"
+    sms_uart_baudrate: int = 9600
+    store_manager_phone: str = "+1-800-555-0199"
+
+class AlertSubsystemConfig(BaseModel):
+    escalation_timeout_sec: float = 300.0
+    ack_cooldown_sec: float = 120.0
+    channels: AlertChannelsConfig = Field(default_factory=AlertChannelsConfig)
+
 class AppConfig(BaseModel):
     edge_device: EdgeDeviceConfig = Field(default_factory=EdgeDeviceConfig)
     video_capture: VideoCaptureConfig = Field(default_factory=VideoCaptureConfig)
@@ -81,6 +120,10 @@ class AppConfig(BaseModel):
     active_learning: ActiveLearningConfig = Field(default_factory=ActiveLearningConfig)
     sync_layer: SyncLayerConfig = Field(default_factory=SyncLayerConfig)
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
+    queue_intelligence: QueueConfig = Field(default_factory=QueueConfig)
+    privacy_pipeline: PrivacyConfig = Field(default_factory=PrivacyConfig)
+    alert_subsystem: AlertSubsystemConfig = Field(default_factory=AlertSubsystemConfig)
+
 
 def load_config(config_path: Path = CONFIG_PATH) -> AppConfig:
     if not config_path.exists():

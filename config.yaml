@@ -65,3 +65,41 @@ sync_layer:
 
 database:
   db_path: "backend/data/retailiq.db"
+
+queue_intelligence:
+  rolling_window_frames: 10          # 5-10 second rolling history for queue features
+  hysteresis_frames: 4               # Frames before state flip (in_queue <-> browsing)
+  counter_end_threshold: 0.88        # Projection distance threshold to mark service completion
+  default_service_time_sec: 45.0     # Default service time before empirical samples accumulate
+  service_history_sample_size: 20    # Rolling window of recent service completion events
+  critical_wait_threshold_sec: 600.0 # Wait > 10 min -> CRITICAL severity
+  medium_wait_threshold_sec: 300.0   # Wait > 5 min -> HIGH severity
+  weight_orientation: 0.35           # Weight for pose body orientation facing counter
+  weight_velocity: 0.25              # Weight for low/forward velocity
+  weight_spacing: 0.20               # Weight for inter-person line spacing
+  weight_dwell: 0.20                 # Weight for continuous forward progression
+
+privacy_pipeline:
+  enabled: true
+  face_detector_type: "opencv_fast"  # "opencv_fast" | "yunet" | "mediapipe"
+  face_confidence_threshold: 0.35    # Biased towards over-blurring for safety
+  downsample_scale: 0.5              # Downsample ratio for ultra-fast face detection on CPU
+  blur_kernel_size: 31               # Gaussian blur kernel (must be odd)
+  blur_sigma: 12.0                   # Gaussian blur sigma
+
+alert_subsystem:
+  escalation_timeout_sec: 300.0      # 5 min unacknowledged -> escalate severity & trigger SMS
+  ack_cooldown_sec: 120.0            # Cooldown after acknowledgement before re-alerting on new breach
+  channels:
+    dashboard_enabled: true
+    mqtt_enabled: true
+    mqtt_topic_prefix: "retailiq/alerts"
+    buzzer_enabled: true
+    buzzer_gpio_pin: 18              # BCM GPIO pin for piezo buzzer on Raspberry Pi
+    rgb_led_enabled: true
+    rgb_led_pins: [23, 24, 25]       # Red, Green, Blue GPIO pins
+    sms_enabled: true
+    sms_uart_port: "COM3"            # or "/dev/ttyUSB0" on Linux/Raspberry Pi
+    sms_uart_baudrate: 9600
+    store_manager_phone: "+1-800-555-0199"
+

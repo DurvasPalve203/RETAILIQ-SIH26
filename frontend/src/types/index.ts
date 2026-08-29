@@ -7,10 +7,12 @@ export interface Zone {
   zone_id: string;
   camera_id: string;
   polygon: Point2D[];
-  zone_type: 'shelf' | 'entrance' | 'aisle' | 'staff';
+  zone_type: 'shelf' | 'entrance' | 'aisle' | 'staff' | 'queue_zone';
   label: string;
   target_sku_id?: string;
   expected_capacity: number;
+  axis_start_xy?: Point2D;
+  axis_end_xy?: Point2D;
   created_at: number;
 }
 
@@ -27,15 +29,96 @@ export interface SkuItem {
 
 export interface LiveAlert {
   alert_id: string;
+  source_module: 'shelf' | 'queue' | 'system';
   zone_id: string;
+  zone_label?: string;
   title: string;
   message: string;
-  type: 'immediate_stockout' | 'predictive_stockout';
-  severity: 'high' | 'medium' | 'low';
+  type: string; // 'immediate_stockout' | 'predictive_stockout' | 'queue_critical_wait' | 'queue_buildup'
+  severity: 'CRITICAL' | 'HIGH' | 'LOW' | 'high' | 'medium' | 'low';
+  state: 'NEW' | 'ACKNOWLEDGED' | 'ESCALATED' | 'RESOLVED';
   eta_minutes: number;
   priority_score: number;
-  ts: number;
   estimated_lost_sales: number;
+  created_at: number;
+  acknowledged_at?: number;
+  resolved_at?: number;
+  escalate_count: number;
+  escalation_remaining_sec?: number;
+  details?: Record<string, any>;
+}
+
+export interface QueueTrackInfo {
+  track_id: number;
+  zone_id: string;
+  projection_distance: number;
+  classification: 'in_queue' | 'browsing';
+  facing_angle_deg: number;
+  queue_position: number;
+  score?: number;
+}
+
+export interface QueueZoneState {
+  zone_id: string;
+  label: string;
+  queue_length: number;
+  growth_rate: number;
+  total_occupants: number;
+  in_queue_tracks: QueueTrackInfo[];
+  browsing_tracks: QueueTrackInfo[];
+  axis_start: [number, number];
+  axis_end: [number, number];
+}
+
+export interface QueuePrediction {
+  prediction_id: string;
+  zone_id: string;
+  zone_label?: string;
+  queue_length: number;
+  growth_rate: number;
+  average_service_time_sec: number;
+  tier1_wait_seconds: number;
+  estimated_wait_seconds: number;
+  wait_minutes_formatted: string;
+  confidence: number;
+  method: string;
+  generated_at: number;
+  is_critical?: boolean;
+  is_high?: boolean;
+}
+
+export interface HardwareStatus {
+  dashboard_active: boolean;
+  mqtt_connected: boolean;
+  mqtt_broker: string;
+  buzzer_enabled: boolean;
+  buzzer_active: boolean;
+  buzzer_pattern: string;
+  rgb_led_enabled: boolean;
+  rgb_led_color: string;
+  rgb_led_state: string;
+  sms_enabled: boolean;
+  sms_status: string;
+  sms_manager_phone: string;
+  last_sms_event?: {
+    phone: string;
+    severity: string;
+    message: string;
+    status: string;
+    timestamp: number;
+    hardware_mode: string;
+    at_sequence: string;
+  };
+}
+
+export interface PrivacyStats {
+  enabled: boolean;
+  faces_detected_count: number;
+  blur_latency_ms: number;
+  total_frames_processed: number;
+  detection_method: string;
+  blur_kernel: string;
+  caption: string;
 }
 
 export interface ZoneStatus {
@@ -63,8 +146,12 @@ export interface LiveStatePayload {
   zone_statuses: ZoneStatus[];
   active_alerts: LiveAlert[];
   predictions: any[];
+  queue_predictions?: QueuePrediction[];
+  queue_states?: Record<string, QueueZoneState>;
   footfall_today: number;
   active_tracks_count: number;
+  hardware_status?: HardwareStatus;
+  privacy_stats?: PrivacyStats;
 }
 
 export interface DashboardSummaryData {

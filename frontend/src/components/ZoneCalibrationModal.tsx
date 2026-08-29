@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Check, Plus, Trash2, Edit3 } from 'lucide-react';
+import { X, Check, Plus, Trash2, Edit3, Compass, Users } from 'lucide-react';
 import { Zone, Point2D } from '../types';
 import { api } from '../services/api';
 
@@ -33,6 +33,16 @@ export const ZoneCalibrationModal: React.FC<ZoneCalibrationModalProps> = ({
     setEditingZones(next);
   };
 
+  const handleUpdateType = (index: number, type: any) => {
+    const next = [...editingZones];
+    next[index].zone_type = type;
+    if (type === 'queue_zone' && !next[index].axis_start_xy) {
+      next[index].axis_start_xy = { x: 0.28, y: 0.86 };
+      next[index].axis_end_xy = { x: 0.70, y: 0.86 };
+    }
+    setEditingZones(next);
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -48,11 +58,11 @@ export const ZoneCalibrationModal: React.FC<ZoneCalibrationModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl space-y-6 p-6">
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-3xl overflow-hidden shadow-2xl space-y-6 p-6">
         <div className="flex items-center justify-between border-b border-slate-800 pb-4">
           <div>
             <h3 className="text-lg font-bold text-white">Zone Calibration Setup</h3>
-            <p className="text-xs text-slate-400">Configure shelf zones, target SKUs, and capacity baselines.</p>
+            <p className="text-xs text-slate-400">Configure shelf zones, queue zones, target SKUs, and capacity baselines.</p>
           </div>
           <button onClick={onClose} className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800">
             <X className="w-5 h-5" />
@@ -75,12 +85,44 @@ export const ZoneCalibrationModal: React.FC<ZoneCalibrationModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-400 uppercase">Type</label>
-                  <div className="mt-1 px-3 py-2 bg-slate-900/60 border border-slate-800 rounded-lg text-xs text-cyan-400 font-mono">
-                    {z.zone_type}
-                  </div>
+                  <label className="text-[11px] font-semibold text-slate-400 uppercase">Zone Type</label>
+                  <select
+                    value={z.zone_type}
+                    onChange={(e) => handleUpdateType(idx, e.target.value)}
+                    className="w-full mt-1 px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-xs font-mono text-cyan-400 focus:outline-none focus:border-cyan-500"
+                  >
+                    <option value="shelf">shelf</option>
+                    <option value="queue_zone">queue_zone</option>
+                    <option value="entrance">entrance</option>
+                    <option value="aisle">aisle</option>
+                    <option value="staff">staff</option>
+                  </select>
                 </div>
               </div>
+
+              {/* Queue Axis configuration if queue_zone */}
+              {z.zone_type === 'queue_zone' && (
+                <div className="p-3 rounded-lg bg-cyan-950/30 border border-cyan-500/30 text-xs space-y-2">
+                  <div className="flex items-center space-x-1.5 text-cyan-300 font-bold">
+                    <Compass className="w-3.5 h-3.5" />
+                    <span>Queue Axis Vector (Back of line → Checkout Counter)</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-300">
+                    <div>
+                      <span>Queue-Start (Back): </span>
+                      <strong className="font-mono text-cyan-400">
+                        {z.axis_start_xy ? `(${z.axis_start_xy.x.toFixed(2)}, ${z.axis_start_xy.y.toFixed(2)})` : '(0.28, 0.86)'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>Counter-End (Billing): </span>
+                      <strong className="font-mono text-cyan-400">
+                        {z.axis_end_xy ? `(${z.axis_end_xy.x.toFixed(2)}, ${z.axis_end_xy.y.toFixed(2)})` : '(0.70, 0.86)'}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div>

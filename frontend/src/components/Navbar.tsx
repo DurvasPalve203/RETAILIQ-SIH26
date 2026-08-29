@@ -8,7 +8,8 @@ import {
   DollarSign, 
   Sliders, 
   Radio,
-  Cpu
+  Cpu,
+  ShieldCheck
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -19,6 +20,7 @@ interface NavbarProps {
   inferenceFps: number;
   isOnline: boolean;
   onOpenSimControls: () => void;
+  onOpenPrivacyModal: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -28,7 +30,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   pendingReviewCount,
   inferenceFps,
   isOnline,
-  onOpenSimControls
+  onOpenSimControls,
+  onOpenPrivacyModal
 }) => {
   const navItems = [
     { id: 'feed', label: 'Live Action Feed', icon: Activity, badge: activeAlertsCount > 0 ? activeAlertsCount : undefined, badgeColor: 'bg-rose-500' },
@@ -97,13 +100,22 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="font-semibold text-emerald-400">{inferenceFps.toFixed(1)}</span>
             </div>
 
+            {/* Privacy Redaction Status Button */}
+            <button
+              onClick={onOpenPrivacyModal}
+              className="flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-950/40 hover:bg-emerald-950/70 text-emerald-300 rounded-lg border border-emerald-500/30 text-xs font-semibold shadow-sm transition-all"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Privacy Blur</span>
+            </button>
+
             {/* Sim Control Button */}
             <button
               onClick={onOpenSimControls}
               className="flex items-center space-x-1.5 px-3 py-1.5 bg-gradient-to-r from-cyan-600/20 to-blue-600/20 hover:from-cyan-600/30 hover:to-blue-600/30 text-cyan-300 rounded-lg border border-cyan-500/30 text-xs font-semibold shadow-sm transition-all"
             >
               <Sliders className="w-3.5 h-3.5" />
-              <span>Sim Test Controls</span>
+              <span>Sim Controls</span>
             </button>
           </div>
         </div>

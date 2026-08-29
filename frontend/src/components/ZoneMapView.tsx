@@ -147,18 +147,28 @@ export const ZoneMapView: React.FC<ZoneMapViewProps> = ({
                       <h4 className="text-sm font-bold text-slate-100 mt-1">{zone.label}</h4>
                     </div>
 
-                    {zone.zone_type === 'shelf' && (
+                    {zone.zone_type === 'shelf' ? (
                       <span className={`px-2 py-1 text-xs font-mono font-bold rounded ${
                         occPct >= 60 ? 'bg-emerald-500/20 text-emerald-300' : (occPct >= 30 ? 'bg-amber-500/20 text-amber-300' : 'bg-rose-500/20 text-rose-300')
                       }`}>
                         {occPct}%
                       </span>
-                    )}
+                    ) : zone.zone_type === 'queue_zone' ? (
+                      <span className="px-2 py-1 text-xs font-mono font-bold rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                        Queue Active
+                      </span>
+                    ) : null}
                   </div>
 
                   <div className="text-[11px] text-slate-400 grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/80">
                     <div>Capacity: <strong className="text-slate-200">{zone.expected_capacity} units</strong></div>
-                    <div>Target SKU: <strong className="text-cyan-400">{zone.target_sku_id || 'N/A'}</strong></div>
+                    <div>
+                      {zone.zone_type === 'queue_zone' ? (
+                        <span>Axis: <strong className="text-cyan-400 font-mono">Calibrated Vector</strong></span>
+                      ) : (
+                        <span>Target SKU: <strong className="text-cyan-400">{zone.target_sku_id || 'N/A'}</strong></span>
+                      )}
+                    </div>
                   </div>
                 </div>
               );

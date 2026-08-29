@@ -1,3 +1,4 @@
+import sys
 import asyncio
 import logging
 import uvicorn
@@ -6,6 +7,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from backend.app.database import init_db
 from backend.app.pipeline_coordinator import PipelineCoordinator

@@ -198,7 +198,7 @@ class PipelineCoordinator:
                         "zone_label": z["label"],
                         "severity": eval_res["severity"] or "medium",
                         "occupancy": eval_res["occupancy_score"],
-                        "ts_start": eval_res.get("event", {}).get("ts_start", time.time())
+                        "ts_start": (eval_res.get("event") or {}).get("ts_start", time.time())
                     })
 
                 zone_statuses.append({

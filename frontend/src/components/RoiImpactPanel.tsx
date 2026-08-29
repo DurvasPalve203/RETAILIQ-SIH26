@@ -120,7 +120,7 @@ export const RoiImpactPanel: React.FC = () => {
               <span>Methodology & Formula</span>
             </h4>
             <p className="text-slate-400 text-[11px] leading-relaxed">
-              $$\text{Loss Prevented} = \left(\text{Resolved Stockouts} \times 18.0\text{ min response delta}\right) \times \text{Sales Constant}$$
+              Loss Prevented = (Resolved Stockouts × 18.0 min response delta) × Sales Constant
             </p>
             <p className="text-slate-500 text-[10px]">
               *Based on industry benchmark of 18-minute delta between unassisted physical store patrols vs real-time push alerting.

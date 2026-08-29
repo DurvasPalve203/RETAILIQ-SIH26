@@ -8,7 +8,8 @@ import {
   ArrowRight,
   ShieldCheck,
   RefreshCw,
-  EyeOff
+  EyeOff,
+  Activity
 } from 'lucide-react';
 import { LiveAlert, ZoneStatus } from '../types';
 import { api } from '../services/api';

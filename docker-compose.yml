@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  retailiq-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: retailiq_edge_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/data:/app/backend/data
+      - ./config.yaml:/app/config.yaml
+    environment:
+      - RETAILIQ_CONFIG=config.yaml
+      - PYTHONUNBUFFERED=1
+
+  retailiq-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: retailiq_edge_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - retailiq-backend

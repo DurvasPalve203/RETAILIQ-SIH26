@@ -1,0 +1,67 @@
+# RetailIQ Configuration Specification
+# All parameters are configurable - zero hardcoded thresholds in source code
+
+edge_device:
+  node_id: "edge-store-01"
+  store_name: "Apex Retail - Bay Area Express"
+  location: "Aisle 4 & Checkout Zone"
+  hardware_target: "edge_offline"
+
+video_capture:
+  source: "synthetic"  # "synthetic" | "0" (webcam) | "rtsp://..." | "path/to/video.mp4"
+  width: 1280
+  height: 720
+  target_fps: 8          # 5-10 FPS target for edge compute efficiency
+  ring_buffer_size: 3
+  reconnect_initial_delay_sec: 1.0
+  reconnect_max_delay_sec: 30.0
+  reconnect_backoff_factor: 2.0
+  low_light_luma_threshold: 45.0      # Flag frame as low-light if mean luma < 45
+  occlusion_diff_threshold: 65.0      # Sudden frame-diff spike threshold
+  occlusion_min_area_ratio: 0.35      # Area ratio for sudden occlusion
+
+detection_and_recognition:
+  detector_confidence_threshold: 0.45
+  nms_iou_threshold: 0.45
+  embedding_dimension: 128
+  sku_similarity_threshold: 0.72      # Cosine similarity threshold for confident SKU match
+  min_samples_per_sku_onboarding: 5   # Photos required for few-shot onboarding
+
+occupancy_and_gap:
+  weight_ssim: 0.45                   # Weight for reference-image difference
+  weight_detection_density: 0.55      # Weight for bounding box detection density
+  rolling_window_frames: 12           # Moving average window size for smoothing
+  depletion_threshold_high: 0.30      # Occupancy < 30% -> High Severity gap
+  depletion_threshold_medium: 0.55    # Occupancy < 55% -> Medium Severity gap
+  depletion_threshold_low: 0.75       # Occupancy < 75% -> Low Severity gap
+  sustained_gap_duration_sec: 3.0     # Time below threshold before emitting stock_out_event
+  restock_recovery_threshold: 0.82    # Occupancy >= 82% closes stock_out_event
+  staff_cooldown_duration_sec: 15.0   # Cooldown window after staff presence to suppress false alerts
+
+tracking_and_footfall:
+  track_high_threshold: 0.6
+  track_low_threshold: 0.1
+  match_threshold: 0.7
+  track_buffer_frames: 30             # Max lost frames before track termination
+  min_dwell_seconds: 2.0              # Minimum dwell time to count as meaningful interaction
+
+intelligence_and_prediction:
+  eta_prediction_lookback_minutes: 15
+  stockout_warning_eta_minutes: 30.0  # Alert if stockout predicted within 30 min
+  sales_loss_dollar_per_minute: 2.50  # ROI calculation constant ($/min out-of-stock)
+  alert_deduplication_cooldown_sec: 45.0
+
+active_learning:
+  min_triage_confidence: 0.72         # Items below this similarity go to review_queue
+  max_queue_items: 200
+
+sync_layer:
+  mqtt_enabled: false                 # Enabled when remote broker configured
+  mqtt_broker: "localhost"
+  mqtt_port: 1883
+  mqtt_topic_prefix: "retailiq/stores/store-01"
+  retry_interval_sec: 10.0
+  batch_sync_size: 50
+
+database:
+  db_path: "backend/data/retailiq.db"

@@ -13,7 +13,7 @@ class EdgeDeviceConfig(BaseModel):
     hardware_target: str = "edge_offline"
 
 class VideoCaptureConfig(BaseModel):
-    source: str = "synthetic"
+    source: str = "http://172.20.10.3:8080/video"
     width: int = 1280
     height: int = 720
     target_fps: int = 8

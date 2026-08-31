@@ -8,7 +8,7 @@ edge_device:
   hardware_target: "edge_offline"
 
 video_capture:
-  source: "synthetic"  # "synthetic" | "0" (webcam) | "rtsp://..." | "path/to/video.mp4"
+  source: "http://172.20.10.3:8080/video"  # "synthetic" | "0" (webcam) | "rtsp://..." | "http://IP:PORT/video"
   width: 1280
   height: 720
   target_fps: 8          # 5-10 FPS target for edge compute efficiency

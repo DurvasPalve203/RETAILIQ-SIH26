@@ -2,13 +2,24 @@ import sqlite3
 import json
 import time
 import os
+import logging
 import threading
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from backend.app.config import settings
 
+logger = logging.getLogger("retailiq.database")
+
 DB_PATH = Path(settings.database.db_path)
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+# Ensure essential asset directories exist
+GALLERY_DIR = DB_PATH.parent / "gallery"
+BASELINES_DIR = DB_PATH.parent / "baselines"
+LOGS_DIR = DB_PATH.parent / "logs"
+
+for d in (GALLERY_DIR, BASELINES_DIR, LOGS_DIR):
+    d.mkdir(parents=True, exist_ok=True)
 
 _local = threading.local()
 
@@ -28,8 +39,59 @@ def get_db_connection() -> sqlite3.Connection:
         _local.connection = conn
     return _local.connection
 
+def db_execute_with_retry(query: str, params: tuple = (), max_retries: int = 3, retry_delay: float = 0.05) -> Any:
+    """Executes a database query with automatic exponential backoff retry on locks."""
+    conn = get_db_connection()
+    last_err = None
+    for attempt in range(max_retries):
+        try:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            conn.commit()
+            return cursor
+        except (sqlite3.OperationalError, sqlite3.DatabaseError) as e:
+            last_err = e
+            if "locked" in str(e).lower() or "busy" in str(e).lower():
+                time.sleep(retry_delay * (2 ** attempt))
+                continue
+            raise e
+    raise last_err or RuntimeError("DB query retry failed")
+
+def check_db_health() -> Dict[str, Any]:
+    """Diagnostic health check for the SQLite persistence layer."""
+    t0 = time.time()
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) as count FROM zones;")
+        zone_count = cursor.fetchone()["count"]
+        
+        cursor.execute("SELECT COUNT(*) as count FROM sku_gallery;")
+        sku_count = cursor.fetchone()["count"]
+
+        latency_ms = round((time.time() - t0) * 1000, 2)
+        db_size_kb = round(DB_PATH.stat().st_size / 1024, 1) if DB_PATH.exists() else 0.0
+
+        return {
+            "status": "healthy",
+            "operational": True,
+            "latency_ms": latency_ms,
+            "db_path": str(DB_PATH),
+            "db_size_kb": db_size_kb,
+            "zones_count": zone_count,
+            "skus_count": sku_count
+        }
+    except Exception as e:
+        logger.error(f"Database health check failed: {e}")
+        return {
+            "status": "degraded",
+            "operational": False,
+            "error": str(e),
+            "latency_ms": round((time.time() - t0) * 1000, 2)
+        }
+
 def init_db():
-    """Initialize the SQLite database with all tables specified in RetailIQ spec."""
+    """Initialize the SQLite database with all tables and performance indexes."""
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -39,11 +101,13 @@ def init_db():
         zone_id TEXT PRIMARY KEY,
         camera_id TEXT NOT NULL,
         polygon_json TEXT NOT NULL,
-        zone_type TEXT NOT NULL, -- 'shelf' | 'entrance' | 'aisle' | 'staff'
+        zone_type TEXT NOT NULL, -- 'shelf' | 'entrance' | 'aisle' | 'staff' | 'queue_zone'
         label TEXT NOT NULL,
         target_sku_id TEXT,
         baseline_image_path TEXT,
         expected_capacity INTEGER DEFAULT 10,
+        axis_start_xy TEXT,
+        axis_end_xy TEXT,
         created_at REAL NOT NULL
     );
     """)
@@ -144,20 +208,20 @@ def init_db():
     );
     """)
 
-    # 9. Queue Zones Table (FR-Q02)
+    # 9. Queue Zones Table
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS queue_zones (
         zone_id TEXT PRIMARY KEY,
         camera_id TEXT NOT NULL,
         polygon_json TEXT NOT NULL,
-        axis_start_xy TEXT NOT NULL, -- JSON {x, y}
-        axis_end_xy TEXT NOT NULL,   -- JSON {x, y}
+        axis_start_xy TEXT NOT NULL,
+        axis_end_xy TEXT NOT NULL,
         created_at REAL NOT NULL,
         FOREIGN KEY (zone_id) REFERENCES zones(zone_id)
     );
     """)
 
-    # 10. Queue Tracks Table (FR-Q03, FR-Q04)
+    # 10. Queue Tracks Table
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS queue_tracks (
         record_id TEXT PRIMARY KEY,
@@ -171,7 +235,7 @@ def init_db():
     );
     """)
 
-    # 11. Queue State Table (FR-Q05)
+    # 11. Queue State Table
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS queue_state (
         state_id TEXT PRIMARY KEY,
@@ -183,7 +247,7 @@ def init_db():
     );
     """)
 
-    # 12. Service Completions Table (FR-Q06)
+    # 12. Service Completions Table
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS service_completions (
         completion_id TEXT PRIMARY KEY,
@@ -195,7 +259,7 @@ def init_db():
     );
     """)
 
-    # 13. Queue Predictions Table (FR-Q06)
+    # 13. Queue Predictions Table
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS queue_predictions (
         prediction_id TEXT PRIMARY KEY,
@@ -208,7 +272,7 @@ def init_db():
     );
     """)
 
-    # 14. Multi-Level Alerts Table (Section D)
+    # 14. Multi-Level Alerts Table
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS alerts (
         alert_id TEXT PRIMARY KEY,
@@ -226,7 +290,7 @@ def init_db():
     );
     """)
 
-    # 15. Alert Deliveries Table (Section D.3)
+    # 15. Alert Deliveries Table
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS alert_deliveries (
         delivery_id TEXT PRIMARY KEY,
@@ -239,15 +303,33 @@ def init_db():
     );
     """)
 
-    # Extend zones table if column axis_start_xy missing
-    try:
-        cursor.execute("ALTER TABLE zones ADD COLUMN axis_start_xy TEXT;")
-    except sqlite3.OperationalError:
-        pass
-    try:
-        cursor.execute("ALTER TABLE zones ADD COLUMN axis_end_xy TEXT;")
-    except sqlite3.OperationalError:
-        pass
+    # 16. Audit Log Table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS audit_logs (
+        log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        action TEXT NOT NULL,
+        actor TEXT NOT NULL,
+        resource TEXT,
+        details_json TEXT,
+        ip_address TEXT,
+        timestamp REAL NOT NULL
+    );
+    """)
+
+    # Performance Indexes
+    indexes = [
+        ("idx_stock_events_status", "CREATE INDEX IF NOT EXISTS idx_stock_events_status ON stock_events(status, ts_start);"),
+        ("idx_dwell_zone_ts", "CREATE INDEX IF NOT EXISTS idx_dwell_zone_ts ON dwell_records(zone_id, entry_ts);"),
+        ("idx_review_queue_status", "CREATE INDEX IF NOT EXISTS idx_review_queue_status ON review_queue(status, ts);"),
+        ("idx_alerts_state", "CREATE INDEX IF NOT EXISTS idx_alerts_state ON alerts(state, severity);"),
+        ("idx_offline_sync_status", "CREATE INDEX IF NOT EXISTS idx_offline_sync_status ON offline_sync_queue(status, retry_count);"),
+        ("idx_audit_logs_ts", "CREATE INDEX IF NOT EXISTS idx_audit_logs_ts ON audit_logs(timestamp);")
+    ]
+    for idx_name, idx_sql in indexes:
+        try:
+            cursor.execute(idx_sql)
+        except Exception:
+            pass
 
     conn.commit()
 

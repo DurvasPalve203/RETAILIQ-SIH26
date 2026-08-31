@@ -1,9 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   AlertTriangle, 
   Clock, 
   CheckCircle2, 
-  TrendingDown, 
   Flame, 
   ArrowRight,
   ShieldCheck, 
@@ -15,6 +14,10 @@ import {
   BellRing,
   Check,
   Zap,
+  Camera,
+  Video,
+  Filter,
+  SlidersHorizontal,
   Smartphone
 } from 'lucide-react';
 import { LiveAlert, ZoneStatus, QueueZoneState, QueuePrediction, HardwareStatus } from '../types';
@@ -30,10 +33,12 @@ interface LiveActionFeedProps {
   hardwareStatus?: HardwareStatus;
   isOccluded: boolean;
   isLowLight: boolean;
+  isSynthetic?: boolean;
   footfallToday: number;
   onRestock: (zoneId: string) => void;
   onRefreshData?: () => void;
   onOpenPrivacyModal?: () => void;
+  onOpenSourceModal?: () => void;
 }
 
 export const LiveActionFeed: React.FC<LiveActionFeedProps> = ({
@@ -44,11 +49,16 @@ export const LiveActionFeed: React.FC<LiveActionFeedProps> = ({
   hardwareStatus,
   isOccluded,
   isLowLight,
+  isSynthetic = false,
   footfallToday,
   onRestock,
   onRefreshData,
-  onOpenPrivacyModal
+  onOpenPrivacyModal,
+  onOpenSourceModal
 }) => {
+  const [filterType, setFilterType] = useState<'all' | 'critical' | 'queue' | 'shelf'>('all');
+  const [showLiveStreamTile, setShowLiveStreamTile] = useState<boolean>(true);
+
   const getSeverityBadge = (severity: string, state: string) => {
     const s = severity.toUpperCase();
     if (state === 'ESCALATED') {
@@ -99,12 +109,20 @@ export const LiveActionFeed: React.FC<LiveActionFeedProps> = ({
     }
   };
 
+  // Filter alerts
+  const filteredAlerts = alerts.filter(a => {
+    if (filterType === 'critical') return a.severity.toUpperCase() === 'CRITICAL' || a.severity.toUpperCase() === 'HIGH';
+    if (filterType === 'queue') return a.source_module === 'queue' || a.type.includes('queue');
+    if (filterType === 'shelf') return a.source_module === 'shelf' || a.type.includes('stock');
+    return true;
+  });
+
   return (
     <div className="space-y-6">
       {/* Occlusion / Environmental Alert Banner */}
       {isOccluded && (
-        <div className="p-4 rounded-2xl bg-amber-950/60 border border-amber-500/40 text-amber-200 flex items-start space-x-3 shadow-xl">
-          <EyeOff className="w-5 h-5 text-amber-400 mt-0.5 flex-shrink-0 animate-bounce" />
+        <div className="p-4 rounded-2xl bg-amber-950/60 border border-amber-500/40 text-amber-200 flex items-start space-x-3 shadow-xl animate-pulse">
+          <EyeOff className="w-5 h-5 text-amber-400 mt-0.5 flex-shrink-0" />
           <div>
             <h4 className="text-sm font-bold tracking-tight">Camera Occlusion Active — Alert Storm Protection</h4>
             <p className="text-xs text-amber-300/80 mt-0.5">
@@ -118,6 +136,69 @@ export const LiveActionFeed: React.FC<LiveActionFeedProps> = ({
         <div className="p-3 rounded-xl bg-slate-800/90 border border-slate-700 text-slate-300 flex items-center space-x-2 text-xs">
           <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
           <span>Low ambient illumination detected — automatic CLAHE histogram normalization engaged.</span>
+        </div>
+      )}
+
+      {/* Live Video Monitor Banner & Quick Control */}
+      {showLiveStreamTile && (
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
+          <div className="p-4 bg-slate-950/80 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                <Camera className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h3 className="text-sm font-bold text-white">Live Edge Camera Video Stream & Detection HUD</h3>
+                  <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full uppercase font-mono ${
+                    !isSynthetic ? 'bg-emerald-950 text-emerald-300 border border-emerald-500/50' : 'bg-amber-950 text-amber-300 border border-amber-500/50'
+                  }`}>
+                    {!isSynthetic ? 'LIVE MOBILE CAMERA' : 'SIMULATION MODE'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400">
+                  Real-time face-blurred overlay, shelf occupancy bounding boxes, and queue tracker.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={onOpenSourceModal}
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all"
+              >
+                <Smartphone className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Switch Camera IP</span>
+              </button>
+
+              <button
+                onClick={onOpenPrivacyModal}
+                className="px-3 py-1.5 bg-emerald-950/50 hover:bg-emerald-900/50 text-emerald-300 border border-emerald-500/30 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Split-Screen Debug</span>
+              </button>
+
+              <button
+                onClick={() => setShowLiveStreamTile(false)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 text-xs"
+                title="Hide live monitor tile"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          <div className="relative w-full aspect-video max-h-[460px] bg-slate-950 flex items-center justify-center">
+            <img 
+              src="/video/feed" 
+              alt="RetailIQ Live Edge Inference Stream" 
+              className="w-full h-full object-contain"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360"><rect width="100%" height="100%" fill="%23090d16"/><text x="50%" y="50%" fill="%230ea5e9" text-anchor="middle" font-family="sans-serif">Connecting to Edge Camera Feed...</text></svg>';
+              }}
+            />
+          </div>
         </div>
       )}
 
@@ -137,7 +218,7 @@ export const LiveActionFeed: React.FC<LiveActionFeedProps> = ({
           <div>
             <p className="text-xs text-slate-400 uppercase font-semibold tracking-wider">Checkout Wait ETA</p>
             <p className="text-2xl font-extrabold text-cyan-400 mt-1">
-              {queuePredictions && queuePredictions[0] ? queuePredictions[0].wait_minutes_formatted : '1m 45s'}
+              {queuePredictions && queuePredictions[0] ? queuePredictions[0].wait_minutes_formatted : '0s'}
             </p>
           </div>
           <div className="p-3 rounded-xl bg-cyan-500/10 text-cyan-400 ring-1 ring-cyan-500/20">
@@ -171,7 +252,7 @@ export const LiveActionFeed: React.FC<LiveActionFeedProps> = ({
         </div>
       </div>
 
-      {/* Feature Addendum Module A & B: Real-Time Queue Intelligence Visualizer */}
+      {/* Real-Time Queue Intelligence Visualizer */}
       <QueueIntelligenceCard
         queueStates={queueStates}
         queuePredictions={queuePredictions}
@@ -182,28 +263,44 @@ export const LiveActionFeed: React.FC<LiveActionFeedProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left 2 Cols: Unified Priority Action Feed */}
         <div className="lg:col-span-2 space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <h2 className="text-base font-bold text-white flex items-center gap-2">
               <Activity className="w-4 h-4 text-cyan-400" />
               <span>Prioritized Floor Action Feed</span>
-              <span className="text-xs font-normal text-slate-400">(Ranked Shelf & Queue Tasks)</span>
+              <span className="text-xs font-normal text-slate-400">({filteredAlerts.length} ranked tasks)</span>
             </h2>
-            <span className="text-xs text-slate-400 font-mono">Real-Time State Machine</span>
+            
+            {/* Filter Pills */}
+            <div className="flex items-center space-x-1 bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs">
+              {(['all', 'critical', 'queue', 'shelf'] as const).map((ft) => (
+                <button
+                  key={ft}
+                  onClick={() => setFilterType(ft)}
+                  className={`px-2.5 py-1 rounded-lg font-semibold uppercase text-[10px] tracking-wider transition-all ${
+                    filterType === ft
+                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {ft}
+                </button>
+              ))}
+            </div>
           </div>
 
-          {alerts.length === 0 ? (
+          {filteredAlerts.length === 0 ? (
             <div className="p-8 rounded-2xl bg-slate-900/40 border border-slate-800/80 text-center space-y-3">
               <div className="w-12 h-12 rounded-full bg-emerald-500/10 text-emerald-400 mx-auto flex items-center justify-center ring-1 ring-emerald-500/20">
                 <CheckCircle2 className="w-6 h-6" />
               </div>
               <h3 className="text-base font-bold text-white">Store Operating in Optimal State</h3>
               <p className="text-xs text-slate-400 max-w-md mx-auto">
-                No active out-of-stock events and checkout queues are flowing within target bounds.
+                No active out-of-stock events matching the selected filter, and checkout queues are flowing within bounds.
               </p>
             </div>
           ) : (
             <div className="space-y-3">
-              {alerts.map((alert) => {
+              {filteredAlerts.map((alert) => {
                 const isQueueAlert = alert.source_module === 'queue' || alert.type.includes('queue');
                 const isAck = alert.state === 'ACKNOWLEDGED';
                 const isEscalated = alert.state === 'ESCALATED';
@@ -226,14 +323,13 @@ export const LiveActionFeed: React.FC<LiveActionFeedProps> = ({
                         <div className="flex flex-wrap items-center gap-2">
                           {getSeverityBadge(alert.severity, alert.state)}
                           
-                          {/* Distinct Capability Labels for Judges */}
                           {isQueueAlert ? (
                             <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 flex items-center gap-1">
-                              <Users className="w-3 h-3" /> Time to be Served
+                              <Users className="w-3 h-3" /> Queue Delay
                             </span>
                           ) : (
                             <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1">
-                              <Package className="w-3 h-3" /> Time to Stock-Out
+                              <Package className="w-3 h-3" /> Shelf Depletion
                             </span>
                           )}
 
@@ -291,7 +387,7 @@ export const LiveActionFeed: React.FC<LiveActionFeedProps> = ({
           )}
         </div>
 
-        {/* Right Col: Shelf Zone Live Gauges & Hardware Signals */}
+        {/* Right Col: Shelf Zone Live Gauges */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-bold text-white">Shelf Zone Status</h2>
@@ -345,7 +441,7 @@ export const LiveActionFeed: React.FC<LiveActionFeedProps> = ({
         </div>
       </div>
 
-      {/* Feature Addendum Section D: Multi-Channel Alert & Hardware Status HUD */}
+      {/* Multi-Channel Alert & Hardware Status HUD */}
       <HardwareAlertHUD
         hardwareStatus={hardwareStatus}
         onRefresh={onRefreshData}

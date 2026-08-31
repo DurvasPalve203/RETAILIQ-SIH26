@@ -8,13 +8,14 @@ import {
   LiveAlert,
   HardwareStatus,
   PrivacyStats,
-  QueuePrediction
+  QueuePrediction,
+  CameraStatus
 } from '../types';
 
 const API_BASE = '/api';
 
 export const api = {
-  // Zones
+  // Zones & Calibration
   getZones: async (): Promise<Zone[]> => {
     const res = await fetch(`${API_BASE}/zones`);
     return res.json();
@@ -25,6 +26,42 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(zones)
     });
+    return res.json();
+  },
+  getLiveSnapshot: async (): Promise<{ image_base64: string }> => {
+    const res = await fetch(`${API_BASE}/zones/live-snapshot`);
+    return res.json();
+  },
+  captureZoneBaseline: async (zoneId: string): Promise<any> => {
+    const res = await fetch(`${API_BASE}/zones/capture-baseline/${zoneId}`, {
+      method: 'POST'
+    });
+    return res.json();
+  },
+
+  // Camera & Video Ingestion
+  getCameraStatus: async (): Promise<CameraStatus> => {
+    const res = await fetch(`${API_BASE}/video/status`);
+    return res.json();
+  },
+  setCameraSource: async (source: string, rotation_deg: number = 0): Promise<any> => {
+    const res = await fetch(`${API_BASE}/video/source`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source, rotation_deg })
+    });
+    return res.json();
+  },
+  togglePrivacyBlur: async (enabled?: boolean): Promise<any> => {
+    const res = await fetch(`${API_BASE}/video/privacy-toggle`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled })
+    });
+    return res.json();
+  },
+  getVideoSnapshot: async (): Promise<{ image_base64: string }> => {
+    const res = await fetch(`${API_BASE}/video/snapshot`);
     return res.json();
   },
 

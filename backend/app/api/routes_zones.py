@@ -1,15 +1,27 @@
+import os
 import time
 import json
 import base64
+from pathlib import Path
 import cv2
 import numpy as np
 from fastapi import APIRouter, HTTPException
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from backend.app.database import get_db_connection
 from backend.app.schemas import ZoneCreate, ZoneResponse
 
 router = APIRouter(prefix="/zones", tags=["Zones"])
+
+# Global coordinator reference
+pipeline_instance = None
+
+def set_pipeline_instance_zones(p):
+    global pipeline_instance
+    pipeline_instance = p
+
+BASELINES_DIR = Path("backend/data/baselines")
+BASELINES_DIR.mkdir(parents=True, exist_ok=True)
 
 @router.get("", response_model=List[ZoneResponse])
 def get_all_zones():
@@ -36,6 +48,83 @@ def get_all_zones():
             created_at=r["created_at"]
         ))
     return result
+
+@router.get("/live-snapshot")
+def get_live_snapshot():
+    """Returns current live frame snapshot for zone calibration canvas."""
+    if not pipeline_instance or pipeline_instance.latest_raw_frame is None:
+        # Fallback dummy canvas
+        blank = np.zeros((720, 1280, 3), dtype=np.uint8)
+        cv2.putText(blank, "Connecting to camera stream...", (450, 360), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 2)
+        _, jpeg = cv2.imencode(".jpg", blank)
+        return {"image_base64": f"data:image/jpeg;base64,{base64.b64encode(jpeg.tobytes()).decode('utf-8')}"}
+
+    frame = pipeline_instance.latest_raw_frame
+    _, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    b64_str = base64.b64encode(jpeg.tobytes()).decode("utf-8")
+    return {"image_base64": f"data:image/jpeg;base64,{b64_str}"}
+
+@router.post("/capture-baseline/{zone_id}")
+def capture_zone_baseline(zone_id: str):
+    """
+    Module 3.3: Captures current live camera frame crop for the given zone
+    and stores it as the 100% full-shelf reference baseline image for SSIM differencing.
+    """
+    if not pipeline_instance or pipeline_instance.latest_raw_frame is None:
+        raise HTTPException(status_code=503, detail="Camera feed not available")
+
+    frame = pipeline_instance.latest_raw_frame
+    h, w = frame.shape[:2]
+
+    # Fetch zone polygon
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT polygon_json, expected_capacity FROM zones WHERE zone_id = ?", (zone_id,))
+    row = cursor.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Zone not found")
+
+    poly = json.loads(row["polygon_json"])
+    capacity = row["expected_capacity"] or 10
+
+    # Compute bounding rect for zone
+    pts = []
+    for p in poly:
+        px = p["x"] if p["x"] > 1.0 else p["x"] * w
+        py = p["y"] if p["y"] > 1.0 else p["y"] * h
+        pts.append([px, py])
+    pts_np = np.array(pts, dtype=np.int32)
+    zx, zy, zw, zh = cv2.boundingRect(pts_np)
+    
+    zx = max(0, zx)
+    zy = max(0, zy)
+    zw = min(w - zx, zw)
+    zh = min(h - zy, zh)
+
+    if zw < 10 or zh < 10:
+        raise HTTPException(status_code=400, detail="Invalid zone bounding area")
+
+    zone_crop = frame[zy:zy+zh, zx:zx+zw].copy()
+    file_path = BASELINES_DIR / f"{zone_id}.jpg"
+    cv2.imwrite(str(file_path), zone_crop)
+
+    # Register in Occupancy Engine
+    pipeline_instance.occupancy_engine.set_zone_baseline(zone_id, zone_crop, capacity)
+
+    # Persist path to database
+    cursor.execute("UPDATE zones SET baseline_image_path = ? WHERE zone_id = ?", (str(file_path), zone_id))
+    conn.commit()
+
+    _, jpeg = cv2.imencode(".jpg", zone_crop)
+    thumb_b64 = base64.b64encode(jpeg.tobytes()).decode("utf-8")
+
+    return {
+        "status": "success",
+        "zone_id": zone_id,
+        "baseline_path": str(file_path),
+        "thumbnail_base64": f"data:image/jpeg;base64,{thumb_b64}",
+        "message": f"Captured fresh live baseline reference for {zone_id}"
+    }
 
 @router.post("/calibrate", response_model=Dict[str, Any])
 def calibrate_zones(zones: List[ZoneCreate]):

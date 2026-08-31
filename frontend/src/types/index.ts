@@ -10,6 +10,7 @@ export interface Zone {
   zone_type: 'shelf' | 'entrance' | 'aisle' | 'staff' | 'queue_zone';
   label: string;
   target_sku_id?: string;
+  baseline_image_path?: string;
   expected_capacity: number;
   axis_start_xy?: Point2D;
   axis_end_xy?: Point2D;
@@ -138,11 +139,45 @@ export interface ZoneStatus {
   };
 }
 
+export interface CameraStatus {
+  source: string;
+  is_synthetic: boolean;
+  is_connected: boolean;
+  is_reconnecting: boolean;
+  rotation_deg: number;
+  fps_actual: number;
+  reconnect_attempts: number;
+  current_backoff_sec: number;
+  last_error?: string;
+  total_downtime_sec: number;
+  inference_fps?: number;
+  privacy_blur_enabled?: boolean;
+}
+
+export interface SystemMetricsSummary {
+  uptime_seconds: number;
+  fps_capture: number;
+  fps_inference: number;
+  avg_latency_ms: number;
+  max_latency_ms: number;
+  total_frames_processed: number;
+  pipeline_crashes: number;
+  sync_sent_count: number;
+  sync_failed_count: number;
+  process_memory_mb: number;
+  process_cpu_pct: number;
+  system_cpu_pct: number;
+  system_memory_pct: number;
+  timestamp: number;
+}
+
 export interface LiveStatePayload {
   timestamp: number;
   fps: number;
   is_occluded: boolean;
   is_low_light: boolean;
+  is_synthetic?: boolean;
+  camera_status?: CameraStatus;
   zone_statuses: ZoneStatus[];
   active_alerts: LiveAlert[];
   predictions: any[];
@@ -188,12 +223,18 @@ export interface ReviewQueueItem {
 export interface SystemHealthData {
   status: string;
   camera_connected: boolean;
+  is_synthetic?: boolean;
+  camera_source?: string;
+  capture_fps?: number;
   inference_fps: number;
   db_operational: boolean;
+  db_health?: Record<string, any>;
   offline_sync_queue_size: number;
+  active_alerts_count?: number;
   uptime_seconds: number;
   hardware_target: string;
   node_id: string;
   store_name: string;
+  system_metrics?: SystemMetricsSummary;
   timestamp: number;
 }

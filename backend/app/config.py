@@ -1,10 +1,23 @@
 import os
+import json
 import yaml
+import logging
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
+from dotenv import load_dotenv
 
-CONFIG_PATH = Path(os.environ.get("RETAILIQ_CONFIG", "config.yaml"))
+logger = logging.getLogger("retailiq.config")
+
+# Automatically load .env file from workspace root or current directory
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+ENV_FILE = PROJECT_ROOT / ".env"
+if ENV_FILE.exists():
+    load_dotenv(ENV_FILE)
+else:
+    load_dotenv()
+
+CONFIG_PATH = Path(os.environ.get("RETAILIQ_CONFIG", str(PROJECT_ROOT / "config.yaml")))
 
 class EdgeDeviceConfig(BaseModel):
     node_id: str = "edge-store-01"
@@ -17,6 +30,7 @@ class VideoCaptureConfig(BaseModel):
     width: int = 1280
     height: int = 720
     target_fps: int = 8
+    rotation_deg: int = 0
     ring_buffer_size: int = 3
     reconnect_initial_delay_sec: float = 1.0
     reconnect_max_delay_sec: float = 30.0
@@ -70,6 +84,7 @@ class SyncLayerConfig(BaseModel):
 
 class DatabaseConfig(BaseModel):
     db_path: str = "backend/data/retailiq.db"
+    seed_on_startup: bool = False
 
 class QueueConfig(BaseModel):
     rolling_window_frames: int = 10
@@ -99,7 +114,7 @@ class AlertChannelsConfig(BaseModel):
     buzzer_enabled: bool = True
     buzzer_gpio_pin: int = 18
     rgb_led_enabled: bool = True
-    rgb_led_pins: list[int] = [23, 24, 25]
+    rgb_led_pins: List[int] = [23, 24, 25]
     sms_enabled: bool = True
     sms_uart_port: str = "COM3"
     sms_uart_baudrate: int = 9600
@@ -110,7 +125,14 @@ class AlertSubsystemConfig(BaseModel):
     ack_cooldown_sec: float = 120.0
     channels: AlertChannelsConfig = Field(default_factory=AlertChannelsConfig)
 
+class SecurityConfig(BaseModel):
+    cors_origins: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5173", "*"]
+    admin_api_key: str = "retailiq-edge-admin-secret"
+    rate_limit_per_minute: int = 120
+    jwt_secret: str = "retailiq-edge-jwt-secret-key-prod-2026"
+
 class AppConfig(BaseModel):
+    env: str = "development"
     edge_device: EdgeDeviceConfig = Field(default_factory=EdgeDeviceConfig)
     video_capture: VideoCaptureConfig = Field(default_factory=VideoCaptureConfig)
     detection_and_recognition: DetectionConfig = Field(default_factory=DetectionConfig)
@@ -123,20 +145,114 @@ class AppConfig(BaseModel):
     queue_intelligence: QueueConfig = Field(default_factory=QueueConfig)
     privacy_pipeline: PrivacyConfig = Field(default_factory=PrivacyConfig)
     alert_subsystem: AlertSubsystemConfig = Field(default_factory=AlertSubsystemConfig)
+    security: SecurityConfig = Field(default_factory=SecurityConfig)
+
+
+def _apply_env_overrides(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Applies environment variable overrides to parsed config dictionary."""
+    env_name = os.getenv("RETAILIQ_ENV", data.get("env", "development"))
+    data["env"] = env_name
+
+    # Edge Device
+    if "edge_device" not in data:
+        data["edge_device"] = {}
+    if os.getenv("NODE_ID"):
+        data["edge_device"]["node_id"] = os.getenv("NODE_ID")
+    if os.getenv("STORE_NAME"):
+        data["edge_device"]["store_name"] = os.getenv("STORE_NAME")
+    if os.getenv("LOCATION"):
+        data["edge_device"]["location"] = os.getenv("LOCATION")
+    if os.getenv("HARDWARE_TARGET"):
+        data["edge_device"]["hardware_target"] = os.getenv("HARDWARE_TARGET")
+
+    # Video Capture
+    if "video_capture" not in data:
+        data["video_capture"] = {}
+    if os.getenv("CAMERA_SOURCE"):
+        data["video_capture"]["source"] = os.getenv("CAMERA_SOURCE")
+    if os.getenv("CAMERA_WIDTH"):
+        data["video_capture"]["width"] = int(os.getenv("CAMERA_WIDTH"))
+    if os.getenv("CAMERA_HEIGHT"):
+        data["video_capture"]["height"] = int(os.getenv("CAMERA_HEIGHT"))
+    if os.getenv("CAMERA_TARGET_FPS"):
+        data["video_capture"]["target_fps"] = int(os.getenv("CAMERA_TARGET_FPS"))
+    if os.getenv("CAMERA_ROTATION_DEG"):
+        data["video_capture"]["rotation_deg"] = int(os.getenv("CAMERA_ROTATION_DEG"))
+
+    # Detection
+    if "detection_and_recognition" not in data:
+        data["detection_and_recognition"] = {}
+    if os.getenv("DETECTOR_CONFIDENCE_THRESHOLD"):
+        data["detection_and_recognition"]["detector_confidence_threshold"] = float(os.getenv("DETECTOR_CONFIDENCE_THRESHOLD"))
+    if os.getenv("SKU_SIMILARITY_THRESHOLD"):
+        data["detection_and_recognition"]["sku_similarity_threshold"] = float(os.getenv("SKU_SIMILARITY_THRESHOLD"))
+
+    # Database
+    if "database" not in data:
+        data["database"] = {}
+    if os.getenv("DATABASE_PATH"):
+        data["database"]["db_path"] = os.getenv("DATABASE_PATH")
+    if os.getenv("SEED_DB_ON_STARTUP") is not None:
+        data["database"]["seed_on_startup"] = os.getenv("SEED_DB_ON_STARTUP").lower() in ("true", "1", "yes")
+
+    # Sync
+    if "sync_layer" not in data:
+        data["sync_layer"] = {}
+    if os.getenv("MQTT_ENABLED") is not None:
+        data["sync_layer"]["mqtt_enabled"] = os.getenv("MQTT_ENABLED").lower() in ("true", "1", "yes")
+    if os.getenv("MQTT_BROKER"):
+        data["sync_layer"]["mqtt_broker"] = os.getenv("MQTT_BROKER")
+    if os.getenv("MQTT_PORT"):
+        data["sync_layer"]["mqtt_port"] = int(os.getenv("MQTT_PORT"))
+    if os.getenv("MQTT_TOPIC_PREFIX"):
+        data["sync_layer"]["mqtt_topic_prefix"] = os.getenv("MQTT_TOPIC_PREFIX")
+
+    # Security
+    if "security" not in data:
+        data["security"] = {}
+    if os.getenv("CORS_ORIGINS"):
+        try:
+            data["security"]["cors_origins"] = json.loads(os.getenv("CORS_ORIGINS"))
+        except Exception:
+            data["security"]["cors_origins"] = [o.strip() for o in os.getenv("CORS_ORIGINS").split(",") if o.strip()]
+    if os.getenv("ADMIN_API_KEY"):
+        data["security"]["admin_api_key"] = os.getenv("ADMIN_API_KEY")
+    if os.getenv("RATE_LIMIT_PER_MINUTE"):
+        data["security"]["rate_limit_per_minute"] = int(os.getenv("RATE_LIMIT_PER_MINUTE"))
+
+    # Alert Subsystem
+    if "alert_subsystem" not in data:
+        data["alert_subsystem"] = {}
+    if "channels" not in data["alert_subsystem"]:
+        data["alert_subsystem"]["channels"] = {}
+    if os.getenv("SMS_UART_PORT"):
+        data["alert_subsystem"]["channels"]["sms_uart_port"] = os.getenv("SMS_UART_PORT")
+    if os.getenv("STORE_MANAGER_PHONE"):
+        data["alert_subsystem"]["channels"]["store_manager_phone"] = os.getenv("STORE_MANAGER_PHONE")
+
+    return data
 
 
 def load_config(config_path: Path = CONFIG_PATH) -> AppConfig:
-    if not config_path.exists():
-        # Look relative to project root
-        root_config = Path(__file__).resolve().parent.parent.parent / "config.yaml"
+    data: Dict[str, Any] = {}
+    if config_path.exists():
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+        except Exception as e:
+            logger.warning(f"Error reading YAML config from {config_path}: {e}")
+    else:
+        root_config = PROJECT_ROOT / "config.yaml"
         if root_config.exists():
-            config_path = root_config
-        else:
-            return AppConfig()
-    
-    with open(config_path, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f) or {}
-    return AppConfig(**data)
+            try:
+                with open(root_config, "r", encoding="utf-8") as f:
+                    data = yaml.safe_load(f) or {}
+            except Exception as e:
+                logger.warning(f"Error reading root config.yaml: {e}")
+
+    # Merge with environment variables
+    merged_data = _apply_env_overrides(data)
+    return AppConfig(**merged_data)
 
 # Singleton global configuration instance
 settings = load_config()

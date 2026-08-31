@@ -9,7 +9,9 @@ import {
   Sliders, 
   Radio,
   Cpu,
-  ShieldCheck
+  ShieldCheck,
+  Camera,
+  Sparkles
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -19,6 +21,8 @@ interface NavbarProps {
   pendingReviewCount: number;
   inferenceFps: number;
   isOnline: boolean;
+  isSynthetic?: boolean;
+  onOpenSourceModal: () => void;
   onOpenSimControls: () => void;
   onOpenPrivacyModal: () => void;
 }
@@ -30,6 +34,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   pendingReviewCount,
   inferenceFps,
   isOnline,
+  isSynthetic = false,
+  onOpenSourceModal,
   onOpenSimControls,
   onOpenPrivacyModal
 }) => {
@@ -56,9 +62,20 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span className="font-extrabold text-lg tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-slate-100 to-slate-300">
                   Retail<span className="text-cyan-400">IQ</span>
                 </span>
-                <span className="px-2 py-0.5 text-[10px] font-semibold bg-cyan-950 text-cyan-300 rounded border border-cyan-800/60 uppercase tracking-wider">
-                  Edge Native
-                </span>
+                
+                {/* Live vs Simulated Mode Badge */}
+                <button
+                  onClick={onOpenSourceModal}
+                  title="Click to configure Camera Source & Mode"
+                  className={`px-2.5 py-0.5 text-[10px] font-extrabold rounded-full border uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm ${
+                    !isSynthetic 
+                      ? 'bg-emerald-950/80 text-emerald-300 border-emerald-500/60 hover:bg-emerald-900/60 shadow-emerald-950/40' 
+                      : 'bg-amber-950/80 text-amber-300 border-amber-500/60 hover:bg-amber-900/60 shadow-amber-950/40'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${!isSynthetic ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+                  <span>{!isSynthetic ? 'LIVE MOBILE FEED' : 'SIMULATION MODE'}</span>
+                </button>
               </div>
               <p className="text-[11px] text-slate-400 font-medium">Apex Retail • Bay Area Express</p>
             </div>
@@ -91,8 +108,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             })}
           </nav>
 
-          {/* Quick HUD & Sim Controls */}
-          <div className="flex items-center space-x-3">
+          {/* Quick HUD & Controls */}
+          <div className="flex items-center space-x-2 sm:space-x-3">
             {/* FPS Indicator */}
             <div className="hidden sm:flex items-center space-x-1.5 px-2.5 py-1 bg-slate-800/80 rounded-md border border-slate-700/60 text-xs font-mono">
               <Cpu className="w-3.5 h-3.5 text-emerald-400" />
@@ -100,13 +117,23 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="font-semibold text-emerald-400">{inferenceFps.toFixed(1)}</span>
             </div>
 
+            {/* Camera Ingestion Source Config Button */}
+            <button
+              onClick={onOpenSourceModal}
+              title="Camera Source & Orientation Settings"
+              className="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-800/90 hover:bg-slate-700 text-cyan-300 rounded-lg border border-slate-700 text-xs font-semibold shadow-sm transition-all"
+            >
+              <Camera className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="hidden sm:inline">Camera Source</span>
+            </button>
+
             {/* Privacy Redaction Status Button */}
             <button
               onClick={onOpenPrivacyModal}
               className="flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-950/40 hover:bg-emerald-950/70 text-emerald-300 rounded-lg border border-emerald-500/30 text-xs font-semibold shadow-sm transition-all"
             >
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Privacy Blur</span>
+              <span className="hidden sm:inline">Privacy Blur</span>
             </button>
 
             {/* Sim Control Button */}
@@ -115,7 +142,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               className="flex items-center space-x-1.5 px-3 py-1.5 bg-gradient-to-r from-cyan-600/20 to-blue-600/20 hover:from-cyan-600/30 hover:to-blue-600/30 text-cyan-300 rounded-lg border border-cyan-500/30 text-xs font-semibold shadow-sm transition-all"
             >
               <Sliders className="w-3.5 h-3.5" />
-              <span>Sim Controls</span>
+              <span className="hidden sm:inline">Sim Controls</span>
             </button>
           </div>
         </div>

@@ -45,7 +45,7 @@ def get_dashboard_summary():
     return {
         "total_active_stockouts": active_stockouts,
         "predicted_stockouts_next_hour": pred_cnt,
-        "today_footfall_count": max(14, today_footfall),
+        "today_footfall_count": today_footfall,
         "lost_sales_prevented_dollars": dollars_saved,
         "lost_sale_minutes_prevented": prevented_minutes,
         "sales_loss_rate_constant": dollar_rate,

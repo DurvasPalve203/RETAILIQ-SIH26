@@ -2,6 +2,7 @@ import numpy as np
 import cv2
 from backend.app.capture.frame_normalizer import FrameNormalizer
 from backend.app.capture.synthetic_stream import SyntheticShelfStream
+from backend.app.capture.stream_capture import normalize_camera_source
 
 def test_frame_normalizer():
     normalizer = FrameNormalizer(low_light_threshold=40.0)
@@ -26,7 +27,21 @@ def test_synthetic_stream():
     assert "ground_truth_boxes" in meta
     assert len(meta["ground_truth_boxes"]) > 0
 
+def test_normalize_camera_source():
+    src, is_syn = normalize_camera_source("synthetic")
+    assert is_syn is True
+    assert src == "synthetic"
+
+    src_ip, is_syn = normalize_camera_source("192.168.1.14:8080")
+    assert is_syn is False
+    assert src_ip == "http://192.168.1.14:8080/video"
+
+    src_idx, is_syn = normalize_camera_source("0")
+    assert is_syn is False
+    assert src_idx == 0
+
 if __name__ == "__main__":
     test_frame_normalizer()
     test_synthetic_stream()
+    test_normalize_camera_source()
     print("Capture tests passed!")

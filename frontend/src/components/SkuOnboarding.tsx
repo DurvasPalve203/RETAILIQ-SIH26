@@ -69,6 +69,17 @@ export const SkuOnboarding: React.FC = () => {
     }
   };
 
+  const handleSnapFromLiveCamera = async () => {
+    try {
+      const snap = await api.getVideoSnapshot();
+      if (snap?.image_base64) {
+        setSampleImages((prev) => [...prev, snap.image_base64]);
+      }
+    } catch (e) {
+      console.error('Failed to snap from camera:', e);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!skuId || !name) return;
@@ -105,7 +116,7 @@ export const SkuOnboarding: React.FC = () => {
           <span>Few-Shot SKU Onboarding (Zero Model Retraining)</span>
         </h2>
         <p className="text-xs text-slate-400">
-          Upload 5–10 sample product photos. The MobileNet/ViT feature encoder generates normalized embeddings instantly into the local SQLite gallery.
+          Upload 5–10 sample product photos or snap live crops from the mobile camera feed. The feature encoder generates normalized embeddings instantly into SQLite.
         </p>
       </div>
 
@@ -178,18 +189,28 @@ export const SkuOnboarding: React.FC = () => {
                 <span className="text-[10px] text-cyan-400">5-10 recommended</span>
               </label>
 
-              {/* Upload Drop Area */}
-              <div className="relative border-2 border-dashed border-slate-800 hover:border-slate-700 rounded-xl p-4 text-center cursor-pointer transition-all">
-                <input
-                  type="file"
-                  multiple
-                  accept="image/*"
-                  onChange={handleImageUpload}
-                  className="absolute inset-0 opacity-0 cursor-pointer"
-                />
-                <Upload className="w-6 h-6 text-slate-400 mx-auto mb-1" />
-                <p className="text-xs text-slate-300 font-medium">Click to select product photos</p>
-                <p className="text-[10px] text-slate-500 mt-0.5">Captures from phone / camera</p>
+              {/* Upload Drop Area & Live Snap */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="relative border-2 border-dashed border-slate-800 hover:border-slate-700 rounded-xl p-3 text-center cursor-pointer transition-all">
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                  <Upload className="w-5 h-5 text-slate-400 mx-auto mb-0.5" />
+                  <p className="text-[11px] text-slate-300 font-medium">Upload File</p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleSnapFromLiveCamera}
+                  className="border-2 border-dashed border-cyan-800/60 hover:border-cyan-500 bg-cyan-950/20 hover:bg-cyan-950/40 rounded-xl p-3 text-center transition-all flex flex-col items-center justify-center"
+                >
+                  <Camera className="w-5 h-5 text-cyan-400 mx-auto mb-0.5" />
+                  <p className="text-[11px] text-cyan-300 font-medium">Snap Live Frame</p>
+                </button>
               </div>
 
               {/* Quick sample generators for demo */}

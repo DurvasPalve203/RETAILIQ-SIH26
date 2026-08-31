@@ -3,11 +3,18 @@ import { LiveStatePayload } from '../types';
 export class LiveFeedSocket {
   private socket: WebSocket | null = null;
   private onStateCallback: ((state: LiveStatePayload) => void) | null = null;
+  private onStatusChange?: (isConnected: boolean) => void;
   private reconnectTimeout: any = null;
   private isExplicitlyClosed = false;
+  private backoffDelay = 1500;
+  private maxBackoff = 10000;
 
-  constructor(onState: (state: LiveStatePayload) => void) {
+  constructor(
+    onState: (state: LiveStatePayload) => void,
+    onStatusChange?: (isConnected: boolean) => void
+  ) {
     this.onStateCallback = onState;
+    this.onStatusChange = onStatusChange;
     this.connect();
   }
 
@@ -22,7 +29,9 @@ export class LiveFeedSocket {
       this.socket = new WebSocket(wsUrl);
 
       this.socket.onopen = () => {
-        console.log('[RetailIQ WebSocket] Connected to edge inference stream.');
+        console.log('[RetailIQ WebSocket] Connected to edge stream.');
+        this.backoffDelay = 1500;
+        if (this.onStatusChange) this.onStatusChange(true);
       };
 
       this.socket.onmessage = (event) => {
@@ -37,18 +46,24 @@ export class LiveFeedSocket {
       };
 
       this.socket.onclose = () => {
+        if (this.onStatusChange) this.onStatusChange(false);
         if (!this.isExplicitlyClosed) {
-          this.reconnectTimeout = setTimeout(() => this.connect(), 2000);
+          this.reconnectTimeout = setTimeout(() => {
+            this.backoffDelay = Math.min(this.backoffDelay * 1.5, this.maxBackoff);
+            this.connect();
+          }, this.backoffDelay);
         }
       };
 
       this.socket.onerror = (err) => {
-        console.warn('[RetailIQ WebSocket] Connection error:', err);
+        console.warn('[RetailIQ WebSocket] Stream reconnecting...');
+        if (this.onStatusChange) this.onStatusChange(false);
         this.socket?.close();
       };
     } catch (e) {
+      if (this.onStatusChange) this.onStatusChange(false);
       if (!this.isExplicitlyClosed) {
-        this.reconnectTimeout = setTimeout(() => this.connect(), 3000);
+        this.reconnectTimeout = setTimeout(() => this.connect(), this.backoffDelay);
       }
     }
   }

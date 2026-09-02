@@ -459,9 +459,14 @@ class VideoCaptureService:
     def get_latest_frame(self, timeout: float = 0.3) -> Optional[Dict[str, Any]]:
         """Consumer method: Grab latest available frame from queue."""
         try:
-            return self.frame_queue.get(timeout=timeout)
+            latest = self.frame_queue.get(timeout=timeout)
         except queue.Empty:
             return None
+        while True:
+            try:
+                latest = self.frame_queue.get_nowait()
+            except queue.Empty:
+                return latest
 
     def get_status(self) -> Dict[str, Any]:
         """Diagnostic state inspection for health check & frontend HUD."""

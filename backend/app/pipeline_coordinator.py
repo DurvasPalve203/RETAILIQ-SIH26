@@ -60,6 +60,9 @@ class PipelineCoordinator:
         self.latest_annotated_frame: Optional[np.ndarray] = None
         self.latest_privacy_split_frame: Optional[np.ndarray] = None
         self.latest_raw_frame: Optional[np.ndarray] = None
+        self.latest_preview_jpeg: Optional[bytes] = None
+        self.latest_privacy_preview_jpeg: Optional[bytes] = None
+        self.privacy_preview_active = False
         
         self.latest_state: Dict[str, Any] = {}
         self.latest_queue_states: Dict[str, Any] = {}
@@ -105,6 +108,13 @@ class PipelineCoordinator:
             for r in rows:
                 axis_start = json.loads(r["axis_start_xy"]) if r["axis_start_xy"] else None
                 axis_end = json.loads(r["axis_end_xy"]) if r["axis_end_xy"] else None
+                
+                # Filter out shelf zones for cash-counter view if camera_mode is queue
+                mode = getattr(settings, "camera_mode", "queue")
+                ztype = r["zone_type"]
+                if mode == "queue" and ztype == "shelf":
+                    continue
+                
                 zones.append({
                     "zone_id": r["zone_id"],
                     "camera_id": r["camera_id"],
@@ -170,6 +180,7 @@ class PipelineCoordinator:
                     continue
 
                 loop_start = time.time()
+                t_capture = loop_start
                 frame = frame_payload["frame"]
                 raw_frame = frame_payload["raw_frame"]
                 norm_metrics = frame_payload["norm_metrics"]
@@ -181,12 +192,14 @@ class PipelineCoordinator:
                 zones = self.get_configured_zones()
 
                 # 2. Run Shelf Zone & Person Detection
+                t_detect_start = time.time()
                 meta = frame_payload.get("metadata", {})
                 det_results = self.detector.detect_and_filter(raw_frame, zones, synthetic_meta=meta)
                 products_by_zone = det_results["products_by_zone"]
                 gaps_by_zone = det_results["gaps_by_zone"]
                 person_detections = det_results["person_detections"]
 
+                t_track_start = time.time()
                 # 3. Footfall & Dwell Tracking (ByteTrack)
                 tracking_results = self.dwell_engine.update(person_detections, zones, w, h)
                 active_tracks = tracking_results["tracks"]
@@ -197,6 +210,7 @@ class PipelineCoordinator:
                         if z["zone_type"] == "staff":
                             self.occupancy_engine.record_staff_presence(z["zone_id"])
 
+                t_sku_start = time.time()
                 # 4. Open-set recognition & SKU Matching on product crops
                 for zid, prod_list in products_by_zone.items():
                     for p in prod_list:
@@ -356,14 +370,28 @@ class PipelineCoordinator:
                 )
                 self.latest_raw_frame = annotated_raw
 
+                t_privacy_start = time.time()
                 # 8. Apply Privacy-Preserving Face Blur
                 blurred_frame, face_count = self.face_blur.apply_face_blur(annotated_raw, person_detections=person_detections)
                 self.latest_annotated_frame = blurred_frame
 
                 # Generate Split-Screen Privacy Demo View
-                self.latest_privacy_split_frame = self.face_blur.generate_split_screen_demo(
-                    annotated_raw, blurred_frame, person_detections=person_detections
-                )
+                if self.privacy_preview_active:
+                    self.latest_privacy_split_frame = self.face_blur.generate_split_screen_demo(
+                        annotated_raw, blurred_frame, person_detections=person_detections
+                    )
+
+                t_encode_start = time.time()
+                preview = cv2.resize(blurred_frame, (settings.privacy_pipeline.preview_width, settings.privacy_pipeline.preview_height), interpolation=cv2.INTER_AREA)
+                ok, jpeg = cv2.imencode(".jpg", preview, [cv2.IMWRITE_JPEG_QUALITY, settings.privacy_pipeline.preview_jpeg_quality])
+                if ok:
+                    self.latest_preview_jpeg = jpeg.tobytes()
+
+                if self.privacy_preview_active and self.latest_privacy_split_frame is not None:
+                    split_preview = cv2.resize(self.latest_privacy_split_frame, (settings.privacy_pipeline.preview_width, settings.privacy_pipeline.preview_height), interpolation=cv2.INTER_AREA)
+                    ok, jpeg = cv2.imencode(".jpg", split_preview, [cv2.IMWRITE_JPEG_QUALITY, settings.privacy_pipeline.preview_jpeg_quality])
+                    if ok:
+                        self.latest_privacy_preview_jpeg = jpeg.tobytes()
 
                 # 9. Compile System State & Record Telemetry
                 now = time.time()
@@ -379,9 +407,19 @@ class PipelineCoordinator:
                 cap_status = self.capture_service.get_status()
 
                 # Track metrics
-                latency_ms = (now - loop_start) * 1000
+                t_end = time.time()
+                latency_ms = (t_end - loop_start) * 1000
+                timings = {
+                    "detection_ms": (t_track_start - t_detect_start) * 1000,
+                    "tracking_ms": (t_sku_start - t_track_start) * 1000,
+                    "sku_ms": (t_privacy_start - t_sku_start) * 1000,
+                    "privacy_ms": (t_encode_start - t_privacy_start) * 1000,
+                    "encode_ms": (t_end - t_encode_start) * 1000,
+                    "total_ms": latency_ms
+                }
                 metrics_service.record_loop_latency(latency_ms)
                 metrics_service.set_fps(cap_status.get("fps_actual", 0.0), self.inference_fps)
+                self.latest_timings = timings
 
                 self.latest_state = {
                     "timestamp": now,
@@ -398,7 +436,8 @@ class PipelineCoordinator:
                     "footfall_today": tracking_results["total_footfall_today"],
                     "active_tracks_count": tracking_results["active_tracks_count"],
                     "hardware_status": hw_status,
-                    "privacy_stats": privacy_stats
+                    "privacy_stats": privacy_stats,
+                    "timings": timings
                 }
 
                 # 10. Broadcast via WebSocket
@@ -519,12 +558,33 @@ class PipelineCoordinator:
             cv2.putText(vis, tag, (x1 + 4, max(15, y1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.40, (20, 20, 20), 1)
 
         # Draw System HUD on Frame Header
-        cv2.rectangle(vis, (0, 0), (w, 34), (18, 22, 28), -1)
-        wait_str = queue_predictions[0]["wait_minutes_formatted"] if queue_predictions else "0s"
-        
+        cv2.rectangle(vis, (0, 0), (w, 60), (18, 22, 28), -1)
+        wait_str = queue_predictions[0]["wait_minutes_formatted"] if queue_predictions else "0 sec"
+        if not queue_predictions and queue_states:
+            # If no predictions generated but we have queue states, show queue length anyway
+            ql = list(queue_states.values())[0].get("queue_length", 0)
+            wait_str = "0 sec" if ql == 0 else "~1 min"
+            
         mode_badge = "SIMULATED" if self.capture_service.is_synthetic() else "LIVE CAMERA"
-        fps_str = f"RetailIQ Edge | [{mode_badge}] | FPS: {self.inference_fps} | Queue Wait: {wait_str} | Footfall: {tracking_results['total_footfall_today']}"
-        cv2.putText(vis, fps_str, (12, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (0, 240, 180), 1)
+        det_name = getattr(self.detector, 'active_detector_name', 'YOLOv8n ONNX')
+        total_lat = int(getattr(self, 'latest_timings', {}).get('total_ms', 0))
+        cam_mode = getattr(settings, "camera_mode", "queue")
+        
+        q_len = list(queue_states.values())[0].get("queue_length", 0) if queue_states else 0
+        
+        if cam_mode == "queue":
+            line1 = f"[{mode_badge}] | FPS: {self.inference_fps} | Det: {det_name} | Latency: {total_lat}ms"
+            cv2.putText(vis, line1, (12, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 240, 180), 1)
+            
+            status_text = "NORMAL" if q_len < 3 else "BUILDUP"
+            col = (0, 255, 0) if q_len < 3 else (0, 165, 255)
+            line2 = f"Cash Counter | Queue: {q_len} in line | Wait: {wait_str} | Status: {status_text} | Footfall: {tracking_results['total_footfall_today']}"
+            cv2.putText(vis, line2, (12, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.48, col, 2)
+        else:
+            line1 = f"RetailIQ Edge | [{mode_badge}] | Det: {det_name} | FPS: {self.inference_fps}"
+            cv2.putText(vis, line1, (12, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (0, 240, 180), 1)
+            line2 = f"Latency: {total_lat}ms | Queue Wait: {wait_str} | Footfall: {tracking_results['total_footfall_today']}"
+            cv2.putText(vis, line2, (12, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (0, 240, 180), 1)
 
         # Privacy Protection Edge Badge
         if self.face_blur.enabled:
@@ -533,6 +593,6 @@ class PipelineCoordinator:
             cv2.putText(vis, "[RAW PREVIEW (BLUR OFF)]", (w - 250, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (100, 180, 255), 1)
 
         if norm_metrics["is_occluded"]:
-            cv2.putText(vis, "[OCCLUSION WARNING]", (w - 440, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (50, 50, 255), 2)
+            cv2.putText(vis, "[OCCLUSION WARNING]", (w - 230, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (50, 50, 255), 2)
 
         return vis

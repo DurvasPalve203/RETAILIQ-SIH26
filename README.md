@@ -8,8 +8,8 @@
 
 | Module | Component | Implementation Highlights |
 | :--- | :--- | :--- |
-| **Module 2** | **Video Capture Layer** | Producer/Consumer ring buffer (size 3) with frame-drop policy; 8 FPS sampling; auto-reconnect with exponential backoff; CLAHE illumination normalization; sudden frame-difference occlusion detector & alert suppression. |
-| **Module 3.1** | **Shelf Zone & Product Detection** | Spatial polygon filtering (point-in-polygon) separating calibrated shelf tiers, entrance gates, and staff counters from extraneous bounding boxes. |
+| **Module 2** | **Video Capture Layer** | Producer/Consumer ring buffer (size 1) at 640x360 processing resolution with frame-drop policy; 8 FPS sampling; auto-reconnect with exponential backoff; CLAHE illumination normalization; sudden frame-difference occlusion detector & alert suppression. |
+| **Module 3.1** | **Shelf Zone & Product Detection** | Spatial polygon filtering using YOLOv8n ONNX (with Haar cascade fallback) (point-in-polygon) separating calibrated shelf tiers, entrance gates, and staff counters from extraneous bounding boxes. |
 | **Module 3.2** | **Few-Shot SKU Recognition** | 128-d L2-normalized convolutional feature encoder; few-shot photo averaging into SQLite `sku_gallery`; sub-second runtime cosine kNN matching without retraining. |
 | **Module 3.3** | **Dual-Signal Gap & Occupancy** | Structural Similarity (SSIM) differencing vs baseline + detection density signal with rolling SMA smoothing; granular severity (`low`/`medium`/`high`); restock recovery detection; staff presence cooldown suppression. |
 | **Module 4** | **Footfall & Dwell Tracking** | ByteTrack multi-object tracker for persistent shopper IDs; centroid dwell accumulation; entrance footfall bucket counters; staff zone exclusion. |

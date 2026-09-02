@@ -18,24 +18,28 @@ def set_pipeline_instance(p):
 def generate_mjpeg():
     """Generates MJPEG stream frames from pipeline's latest annotated frame."""
     while True:
-        if pipeline_instance and pipeline_instance.latest_annotated_frame is not None:
-            frame = pipeline_instance.latest_annotated_frame
-            ret, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
-            if ret:
+        if pipeline_instance and pipeline_instance.latest_preview_jpeg is not None:
+            jpeg = pipeline_instance.latest_preview_jpeg
+            if jpeg:
                 yield (b"--frame\r\n"
-                       b"Content-Type: image/jpeg\r\n\r\n" + jpeg.tobytes() + b"\r\n")
-        time.sleep(0.06) # ~16 FPS for preview stream
+                       b"Content-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n")
+        time.sleep(0.03)
 
 def generate_privacy_mjpeg():
     """Generates MJPEG stream frames from pipeline's split-screen privacy debug view."""
-    while True:
-        if pipeline_instance and pipeline_instance.latest_privacy_split_frame is not None:
-            frame = pipeline_instance.latest_privacy_split_frame
-            ret, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
-            if ret:
-                yield (b"--frame\r\n"
-                       b"Content-Type: image/jpeg\r\n\r\n" + jpeg.tobytes() + b"\r\n")
-        time.sleep(0.06)
+    if pipeline_instance:
+        pipeline_instance.privacy_preview_active = True
+    try:
+        while True:
+            if pipeline_instance and pipeline_instance.latest_privacy_preview_jpeg is not None:
+                jpeg = pipeline_instance.latest_privacy_preview_jpeg
+                if jpeg:
+                    yield (b"--frame\r\n"
+                           b"Content-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n")
+            time.sleep(0.03)
+    finally:
+        if pipeline_instance:
+            pipeline_instance.privacy_preview_active = False
 
 @router.get("/feed")
 def video_feed():

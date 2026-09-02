@@ -67,6 +67,11 @@ npm run dev
 
 ---
 
+## 4.5 Detection & Pipeline Architecture
+- **Detector**: YOLOv8n ONNX model (`yolov8n.onnx`) is loaded by default.
+- **Fallback**: Automatically falls back to Haar Cascade if the YOLO model is missing.
+- **Buffer & Resolution**: The pipeline uses a fixed ring buffer (size 1) and processes video at 640x360 resolution (with 640x360 preview resolution) to maintain low latency without overloading edge CPU/RAM.
+
 ## 5. Health & Diagnostic Endpoints
 
 | Endpoint | Method | Description |

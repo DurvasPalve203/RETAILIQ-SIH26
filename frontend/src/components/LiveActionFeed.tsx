@@ -39,6 +39,7 @@ interface LiveActionFeedProps {
   onRefreshData?: () => void;
   onOpenPrivacyModal?: () => void;
   onOpenSourceModal?: () => void;
+  videoFeedKey?: number;
 }
 
 export const LiveActionFeed: React.FC<LiveActionFeedProps> = ({
@@ -54,7 +55,8 @@ export const LiveActionFeed: React.FC<LiveActionFeedProps> = ({
   onRestock,
   onRefreshData,
   onOpenPrivacyModal,
-  onOpenSourceModal
+  onOpenSourceModal,
+  videoFeedKey = Date.now()
 }) => {
   const [filterType, setFilterType] = useState<'all' | 'critical' | 'queue' | 'shelf'>('all');
   const [showLiveStreamTile, setShowLiveStreamTile] = useState<boolean>(true);
@@ -191,7 +193,7 @@ export const LiveActionFeed: React.FC<LiveActionFeedProps> = ({
 
           <div className="relative w-full aspect-video max-h-[460px] bg-slate-950 flex items-center justify-center">
             <img 
-              src="/video/feed" 
+              src={`/video/feed?_k=${videoFeedKey}`} 
               alt="RetailIQ Live Edge Inference Stream" 
               className="w-full h-full object-contain"
               onError={(e) => {

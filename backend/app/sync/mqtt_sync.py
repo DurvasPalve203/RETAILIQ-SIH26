@@ -2,6 +2,7 @@ import time
 import json
 import threading
 import logging
+import paho.mqtt.client as mqtt
 from typing import Dict, Any, Optional
 from backend.app.config import settings
 from backend.app.database import get_db_connection
@@ -21,9 +22,21 @@ class SyncService:
         self.node_id = node_id
         self._running = False
         self._sync_thread: Optional[threading.Thread] = None
-        self.mqtt_client = None
+        self.mqtt_client = mqtt.Client()
         self.is_connected = False
         self.backoff_delay = config.retry_interval_sec
+        
+        def on_connect(client, userdata, flags, rc):
+            if rc == 0:
+                self.is_connected = True
+                logger.info(f"Connected to MQTT broker {self.config.mqtt_broker}:{self.config.mqtt_port}")
+            else:
+                self.is_connected = False
+        def on_disconnect(client, userdata, rc):
+            self.is_connected = False
+            
+        self.mqtt_client.on_connect = on_connect
+        self.mqtt_client.on_disconnect = on_disconnect
 
     def start(self):
         self._running = True
@@ -68,22 +81,40 @@ class SyncService:
                 if not records:
                     continue
 
-                # In offline/mock mode or when broker is reachable
+                # Try to connect if not connected
+                if not self.is_connected:
+                    try:
+                        self.mqtt_client.connect(self.config.mqtt_broker, self.config.mqtt_port, 10)
+                        self.mqtt_client.loop_start()
+                        time.sleep(0.5) # Wait for connect callback
+                    except Exception as e:
+                        logger.warning(f"MQTT connect failed: {e}")
+                        raise e
+
+                if not self.is_connected:
+                    raise Exception("Not connected to MQTT broker after attempt")
+
                 # If connected, publish each record
                 for r in records:
                     qid = r["queue_id"]
-                    # Mark synced
-                    cursor.execute("""
-                        UPDATE offline_sync_queue
-                        SET status = 'synced', synced_at = ?
-                        WHERE queue_id = ?
-                    """, (time.time(), qid))
+                    topic = r["topic"]
+                    payload = r["payload_json"]
+                    msg = self.mqtt_client.publish(topic, payload, qos=1)
+                    msg.wait_for_publish(timeout=2.0)
+                    if msg.is_published():
+                        # Mark synced
+                        cursor.execute("""
+                            UPDATE offline_sync_queue
+                            SET status = 'synced', synced_at = ?
+                            WHERE queue_id = ?
+                        """, (time.time(), qid))
+                    else:
+                        raise Exception("MQTT publish failed or timed out")
                 conn.commit()
-                self.is_connected = True
                 self.backoff_delay = self.config.retry_interval_sec
 
             except Exception as e:
-                logger.warning(f"Sync failed (offline mode active): {e}")
+                logger.warning(f"Sync failed, keeping records pending: {e}")
                 self.is_connected = False
                 self.backoff_delay = min(60.0, self.backoff_delay * 1.5)
 

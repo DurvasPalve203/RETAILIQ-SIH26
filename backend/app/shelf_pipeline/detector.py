@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import time
+from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional
 from backend.app.config import settings
 
@@ -14,10 +15,28 @@ class ShelfDetector:
     """
     def __init__(self, confidence_thresh: float = settings.detection_and_recognition.detector_confidence_threshold):
         self.confidence_thresh = confidence_thresh
+        self.person_detection_interval = max(1, settings.detection_and_recognition.person_detection_interval_frames)
+        self._person_frame_counter = 0
+        self._cached_person_detections = []
+        self.cv_trackers = []
+        self.person_confidence = self.confidence_thresh
+        self.person_input_size = max(160, settings.detection_and_recognition.person_model_input_size)
+        self.person_net = None
         
-        # Initialize HOG People Detector
-        self.hog = cv2.HOGDescriptor()
-        self.hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+        model_path = Path(__file__).resolve().parents[3] / "backend" / "models" / "yolov8n.onnx"
+        if model_path.exists():
+            try:
+                self.person_net = cv2.dnn.readNetFromONNX(str(model_path))
+            except Exception as exc:
+                print(f"[RetailIQ] YOLO model unavailable, using Haar fallback: {exc}")
+        else:
+            print(f"[RetailIQ] YOLO model not found at {model_path}, using Haar fallback.")
+        
+        # Initialize HOG when supported by the installed OpenCV build.
+        self.hog = None
+        if hasattr(cv2, "HOGDescriptor") and hasattr(cv2, "HOGDescriptor_getDefaultPeopleDetector"):
+            self.hog = cv2.HOGDescriptor()
+            self.hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
         
         # Load Upper Body and Full Body Cascades for robust person detection
         self._body_cascades = []
@@ -29,6 +48,12 @@ class ShelfDetector:
                     self._body_cascades.append(clf)
             except Exception:
                 pass
+
+    @property
+    def active_detector_name(self) -> str:
+        if self.person_net is not None:
+            return "YOLOv8n ONNX"
+        return "Haar"
 
     def is_point_in_polygon(self, point: Tuple[float, float], polygon: List[Dict[str, float]], frame_w: int, frame_h: int) -> bool:
         """Point-in-polygon test using OpenCV."""
@@ -44,100 +69,134 @@ class ShelfDetector:
         return dist >= 0
 
     def _detect_persons(self, frame: np.ndarray) -> List[Dict[str, Any]]:
-        """
-        Runs HOG people detector + Upper Body cascade on frame.
-        Optimized for real-time edge CPU performance.
-        """
-        h, w = frame.shape[:2]
-        scale = 0.5
-        small_w = max(64, int(w * scale))
-        small_h = max(64, int(h * scale))
-        small = cv2.resize(frame, (small_w, small_h), interpolation=cv2.INTER_LINEAR)
-        gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
-
-        person_boxes = []
-
-        # 1. HOG People Detector
-        try:
-            rects, weights = self.hog.detectMultiScale(
-                small,
-                winStride=(8, 8),
-                padding=(8, 8),
-                scale=1.05,
-                hitThreshold=0.0
-            )
-            for i, (rx, ry, rw, rh) in enumerate(rects):
-                weight = float(weights[i]) if i < len(weights) else 0.7
-                if weight > -0.2: # permissive threshold for high recall
-                    x1 = max(0, int(rx / scale))
-                    y1 = max(0, int(ry / scale))
-                    x2 = min(w, int((rx + rw) / scale))
-                    y2 = min(h, int((ry + rh) / scale))
-                    if (x2 - x1) > 20 and (y2 - y1) > 40:
-                        person_boxes.append({
-                            "box": [x1, y1, x2, y2],
-                            "confidence": min(0.98, max(0.60, 0.75 + weight * 0.1)),
-                            "class": "person"
-                        })
-        except Exception:
-            pass
-
-        # 2. Upper body cascade (especially good for shoppers in checkout queues)
-        for cascade in self._body_cascades:
-            try:
-                bodies = cascade.detectMultiScale(
-                    gray,
-                    scaleFactor=1.15,
-                    minNeighbors=2,
-                    minSize=(int(30 * scale), int(45 * scale))
-                )
-                for (bx, by, bw, bh) in bodies:
-                    x1 = max(0, int(bx / scale))
-                    y1 = max(0, int(by / scale))
-                    x2 = min(w, int((bx + bw) / scale))
-                    # Expand height downwards for estimated full body
-                    y2 = min(h, int((by + bh * 1.8) / scale))
-                    person_boxes.append({
-                        "box": [x1, y1, x2, y2],
-                        "confidence": 0.80,
+        self._person_frame_counter += 1
+        
+        # Tracking phase (skip detection frames)
+        if self._person_frame_counter % self.person_detection_interval != 0 and len(self.cv_trackers) > 0:
+            updated_boxes = []
+            valid_trackers = []
+            for trk, conf in self.cv_trackers:
+                ok, bbox = trk.update(frame)
+                if ok:
+                    x, y, w, h = [int(v) for v in bbox]
+                    updated_boxes.append({
+                        "box": [x, y, x + w, y + h],
+                        "confidence": conf,
                         "class": "person"
                     })
+                    valid_trackers.append((trk, conf))
+            self.cv_trackers = valid_trackers
+            self._cached_person_detections = updated_boxes
+            return self._cached_person_detections
+
+        # Detection phase
+        h, w = frame.shape[:2]
+        person_boxes = []
+
+        if self.person_net is not None:
+            # YOLOv8n ONNX Inference
+            blob = cv2.dnn.blobFromImage(frame, 1/255.0, (640, 640), swapRB=True, crop=False)
+            self.person_net.setInput(blob)
+            preds = self.person_net.forward()
+            
+            # YOLOv8 output is [1, 84, 8400]
+            preds = np.squeeze(preds)
+            if preds.shape[0] == 84:
+                preds = preds.T
+                
+            x_scale = w / 640
+            y_scale = h / 640
+            
+            for row in preds:
+                conf = float(np.max(row[4:]))
+                class_id = int(np.argmax(row[4:]))
+                if class_id == 0 and conf >= self.confidence_thresh:
+                    cx, cy, pw, ph = row[:4]
+                    x1 = max(0, int((cx - pw / 2) * x_scale))
+                    y1 = max(0, int((cy - ph / 2) * y_scale))
+                    x2 = min(w, int((cx + pw / 2) * x_scale))
+                    y2 = min(h, int((cy + ph / 2) * y_scale))
+                    person_boxes.append({
+                        "box": [x1, y1, x2, y2],
+                        "confidence": conf,
+                        "class": "person"
+                    })
+        else:
+            # Haar / HOG Fallback
+            scale = 0.5
+            small_w = max(64, int(w * scale))
+            small_h = max(64, int(h * scale))
+            small = cv2.resize(frame, (small_w, small_h), interpolation=cv2.INTER_LINEAR)
+            gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+
+            try:
+                rects, weights = self.hog.detectMultiScale(
+                    small, winStride=(8, 8), padding=(8, 8), scale=1.05, hitThreshold=0.0
+                )
+                for i, (rx, ry, rw, rh) in enumerate(rects):
+                    weight = float(weights[i]) if i < len(weights) else 0.7
+                    if weight > -0.2:
+                        x1 = max(0, int(rx / scale))
+                        y1 = max(0, int(ry / scale))
+                        x2 = min(w, int((rx + rw) / scale))
+                        y2 = min(h, int((ry + rh) / scale))
+                        if (x2 - x1) > 20 and (y2 - y1) > 40:
+                            person_boxes.append({
+                                "box": [x1, y1, x2, y2],
+                                "confidence": min(0.98, max(0.60, 0.75 + weight * 0.1)),
+                                "class": "person"
+                            })
             except Exception:
                 pass
 
-        # Merge overlapping person detections
+            for cascade in self._body_cascades:
+                try:
+                    bodies = cascade.detectMultiScale(gray, scaleFactor=1.15, minNeighbors=2, minSize=(int(30 * scale), int(45 * scale)))
+                    for (bx, by, bw, bh) in bodies:
+                        x1 = max(0, int(bx / scale))
+                        y1 = max(0, int(by / scale))
+                        x2 = min(w, int((bx + bw) / scale))
+                        y2 = min(h, int((by + bh * 1.8) / scale))
+                        person_boxes.append({
+                            "box": [x1, y1, x2, y2],
+                            "confidence": 0.80,
+                            "class": "person"
+                        })
+                except Exception:
+                    pass
+
+        # NMS / Merge overlaps
         merged = []
         used = [False] * len(person_boxes)
         for i, det1 in enumerate(person_boxes):
-            if used[i]:
-                continue
-            b1 = det1["box"]
-            cur_x1, cur_y1, cur_x2, cur_y2 = b1
+            if used[i]: continue
+            cur_x1, cur_y1, cur_x2, cur_y2 = det1["box"]
             cur_conf = det1["confidence"]
             used[i] = True
-
             for j, det2 in enumerate(person_boxes):
-                if used[j]:
-                    continue
+                if used[j]: continue
                 b2 = det2["box"]
-                # Overlap test
-                ox1 = max(cur_x1, b2[0])
-                oy1 = max(cur_y1, b2[1])
-                ox2 = min(cur_x2, b2[2])
-                oy2 = min(cur_y2, b2[3])
+                ox1, oy1 = max(cur_x1, b2[0]), max(cur_y1, b2[1])
+                ox2, oy2 = min(cur_x2, b2[2]), min(cur_y2, b2[3])
                 if ox2 > ox1 and oy2 > oy1:
-                    cur_x1 = min(cur_x1, b2[0])
-                    cur_y1 = min(cur_y1, b2[1])
-                    cur_x2 = max(cur_x2, b2[2])
-                    cur_y2 = max(cur_y2, b2[3])
+                    cur_x1, cur_y1 = min(cur_x1, b2[0]), min(cur_y1, b2[1])
+                    cur_x2, cur_y2 = max(cur_x2, b2[2]), max(cur_y2, b2[3])
                     cur_conf = max(cur_conf, det2["confidence"])
                     used[j] = True
+            merged.append({"box": [cur_x1, cur_y1, cur_x2, cur_y2], "confidence": cur_conf, "class": "person"})
 
-            merged.append({
-                "box": [cur_x1, cur_y1, cur_x2, cur_y2],
-                "confidence": cur_conf,
-                "class": "person"
-            })
+        self._cached_person_detections = merged
+        
+        # Initialize trackers for the new detections
+        self.cv_trackers = []
+        for det in merged:
+            x1, y1, x2, y2 = det["box"]
+            w_box = x2 - x1
+            h_box = y2 - y1
+            if w_box > 0 and h_box > 0:
+                trk = cv2.TrackerKCF_create()
+                trk.init(frame, (x1, y1, w_box, h_box))
+                self.cv_trackers.append((trk, det["confidence"]))
 
         return merged
 
@@ -164,8 +223,6 @@ class ShelfDetector:
 
             # 2. Real Product Detection inside Shelf Zones
             shelf_zones = [z for z in zones if z.get("zone_type") == "shelf"]
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            
             for sz in shelf_zones:
                 poly = sz.get("polygon", [])
                 if not poly:
@@ -188,7 +245,7 @@ class ShelfDetector:
                 if zw < 20 or zh < 20:
                     continue
 
-                zone_roi_gray = gray[zy:zy+zh, zx:zx+zw]
+                zone_roi_gray = cv2.cvtColor(frame[zy:zy+zh, zx:zx+zw], cv2.COLOR_BGR2GRAY)
                 
                 # Adaptive threshold for product edge region proposals
                 thresh = cv2.adaptiveThreshold(zone_roi_gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 15, 3)

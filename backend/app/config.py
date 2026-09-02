@@ -26,7 +26,7 @@ class EdgeDeviceConfig(BaseModel):
     hardware_target: str = "edge_offline"
 
 class VideoCaptureConfig(BaseModel):
-    source: str = "http://172.20.10.3:8080/video"
+    source: str = "http://192.0.0.4:8080/video"
     width: int = 1280
     height: int = 720
     target_fps: int = 8
@@ -45,6 +45,9 @@ class DetectionConfig(BaseModel):
     embedding_dimension: int = 128
     sku_similarity_threshold: float = 0.72
     min_samples_per_sku_onboarding: int = 5
+    person_detection_interval_frames: int = 3
+    face_detection_interval_frames: int = 5
+    person_model_input_size: int = 640
 
 class OccupancyConfig(BaseModel):
     weight_ssim: float = 0.45
@@ -106,6 +109,10 @@ class PrivacyConfig(BaseModel):
     downsample_scale: float = 0.5
     blur_kernel_size: int = 31
     blur_sigma: float = 12.0
+    face_detection_interval_frames: int = 5
+    preview_width: int = 640
+    preview_height: int = 360
+    preview_jpeg_quality: int = 70
 
 class AlertChannelsConfig(BaseModel):
     dashboard_enabled: bool = True
@@ -132,6 +139,7 @@ class SecurityConfig(BaseModel):
     jwt_secret: str = "retailiq-edge-jwt-secret-key-prod-2026"
 
 class AppConfig(BaseModel):
+    camera_mode: str = "queue"
     env: str = "development"
     edge_device: EdgeDeviceConfig = Field(default_factory=EdgeDeviceConfig)
     video_capture: VideoCaptureConfig = Field(default_factory=VideoCaptureConfig)

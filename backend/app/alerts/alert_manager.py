@@ -307,7 +307,7 @@ class AlertManager:
         sms_stat = self.sms_driver.get_status()
         return {
             "dashboard_active": True,
-            "mqtt_connected": self.sync_service.is_connected or True,
+            "mqtt_connected": self.sync_service.is_connected,
             "mqtt_broker": f"{settings.sync_layer.mqtt_broker}:{settings.sync_layer.mqtt_port}",
             "buzzer_enabled": self.config.channels.buzzer_enabled,
             "buzzer_active": hw_stat["buzzer_active"],

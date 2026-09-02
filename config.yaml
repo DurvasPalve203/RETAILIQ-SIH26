@@ -8,11 +8,11 @@ edge_device:
   hardware_target: "edge_offline"
 
 video_capture:
-  source: "http://172.20.10.3:8080/video"  # "synthetic" | "0" (webcam) | "rtsp://..." | "http://IP:PORT/video"
-  width: 1280
-  height: 720
+  source: "http://192.0.0.4:8080/video"  # "synthetic" | "0" (webcam) | "rtsp://..." | "http://IP:PORT/video"
+  width: 640
+  height: 360
   target_fps: 8          # 5-10 FPS target for edge compute efficiency
-  ring_buffer_size: 3
+  ring_buffer_size: 1
   reconnect_initial_delay_sec: 1.0
   reconnect_max_delay_sec: 30.0
   reconnect_backoff_factor: 2.0
@@ -26,6 +26,9 @@ detection_and_recognition:
   embedding_dimension: 128
   sku_similarity_threshold: 0.72      # Cosine similarity threshold for confident SKU match
   min_samples_per_sku_onboarding: 5   # Photos required for few-shot onboarding
+  person_detection_interval_frames: 3 # Reuse person detections between scans
+  person_model_path: "backend/models/yolov8n.onnx"
+  person_model_input_size: 320
 
 occupancy_and_gap:
   weight_ssim: 0.45                   # Weight for reference-image difference
@@ -86,6 +89,10 @@ privacy_pipeline:
   downsample_scale: 0.5              # Downsample ratio for ultra-fast face detection on CPU
   blur_kernel_size: 31               # Gaussian blur kernel (must be odd)
   blur_sigma: 12.0                   # Gaussian blur sigma
+  face_detection_interval_frames: 5  # Face detector cadence; head projection remains per frame
+  preview_width: 640
+  preview_height: 360
+  preview_jpeg_quality: 70
 
 alert_subsystem:
   escalation_timeout_sec: 300.0      # 5 min unacknowledged -> escalate severity & trigger SMS

@@ -64,6 +64,7 @@ export const App: React.FC = () => {
   const [pendingReviewsCount, setPendingReviewsCount] = useState(0);
   const [wsConnected, setWsConnected] = useState(true);
   const [isDataStale, setIsDataStale] = useState(false);
+  const [videoFeedKey, setVideoFeedKey] = useState(Date.now());
 
   const lastPacketTsRef = useRef<number>(Date.now());
 
@@ -200,6 +201,7 @@ export const App: React.FC = () => {
                 onRefreshData={fetchInitialData}
                 onOpenPrivacyModal={() => setIsPrivacyOpen(true)}
                 onOpenSourceModal={() => setIsSourceModalOpen(true)}
+                videoFeedKey={videoFeedKey}
               />
             )}
 
@@ -250,7 +252,7 @@ export const App: React.FC = () => {
         <CameraSourceModal
           isOpen={isSourceModalOpen}
           onClose={() => setIsSourceModalOpen(false)}
-          onSourceChanged={fetchInitialData}
+          onSourceChanged={() => { setVideoFeedKey(Date.now()); fetchInitialData(); }}
         />
       </div>
     </ErrorBoundary>

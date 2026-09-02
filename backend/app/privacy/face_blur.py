@@ -20,6 +20,9 @@ class FaceBlurPipeline:
         self.downsample_scale = config.downsample_scale
         self.kernel_size = config.blur_kernel_size if config.blur_kernel_size % 2 == 1 else config.blur_kernel_size + 1
         self.sigma = config.blur_sigma
+        self.face_detection_interval = max(5, config.face_detection_interval_frames)
+        self._frame_counter = 0
+        self._cached_faces = []
 
         # Load OpenCV Face Detector Cascades
         self._cascades = []
@@ -154,7 +157,10 @@ class FaceBlurPipeline:
         h, w = blurred.shape[:2]
 
         # 1. Detect faces via multi-cascade
-        faces = self.detect_faces(frame)
+        self._frame_counter += 1
+        if self._frame_counter == 1 or self._frame_counter % self.face_detection_interval == 0:
+            self._cached_faces = self.detect_faces(frame)
+        faces = list(self._cached_faces)
 
         # 2. Also project head/face region of any person detections (guaranteed coverage)
         if person_detections:
